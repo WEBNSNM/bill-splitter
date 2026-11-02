@@ -4,3 +4,6 @@ __pycache__/
 outputs/
 *.xlsx
 *.csv
+build/
+dist/
+*.spec

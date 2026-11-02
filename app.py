@@ -7,11 +7,14 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from bill_splitter.core import export_bills
+from bill_splitter.version import VERSION
+from bill_splitter.updater import check_update, download_update, install_update
+import sys
 
 
 def main():
     root = tk.Tk()
-    root.title('学校账单分类工具')
+    root.title('学校账单分类工具 v' + VERSION)
     root.geometry('820x570')
     root.minsize(720, 520)
     style = ttk.Style(root)
@@ -20,7 +23,11 @@ def main():
     style.configure('TButton', font=('Microsoft YaHei UI', 10), padding=8)
     panel = ttk.Frame(root, padding=24)
     panel.pack(fill='both', expand=True)
-    ttk.Label(panel, text='学校账单 · 自动分类', font=('Microsoft YaHei UI', 21, 'bold')).pack(anchor='w')
+    heading = ttk.Frame(panel)
+    heading.pack(fill='x')
+    ttk.Label(heading, text='学校账单 · 自动分类', font=('Microsoft YaHei UI', 21, 'bold')).pack(side='left')
+    update_button = ttk.Button(heading, text='v' + VERSION + ' · 检查更新')
+    update_button.pack(side='right')
     ttk.Label(panel, text='读取第一个工作表，每所学校生成四张表；源文件保持不变。').pack(anchor='w', pady=(8, 20))
     source = tk.StringVar()
     output = tk.StringVar()
@@ -67,8 +74,23 @@ def main():
             messagebox.showwarning('请先选择', '请选择源账单和输出文件夹。')
             return
         button.configure(state='disabled')
+        update_button.configure(state='disabled')
         append('正在检查源数据并生成文件……')
         threading.Thread(target=worker, args=(source.get(), output.get(), amount.get()), daemon=True).start()
+
+    def update_worker(download=None):
+        try:
+            events.put(('downloaded', download_update(download)) if download else ('update', check_update()))
+        except Exception as error:
+            events.put(('error', '检查或下载更新失败：' + str(error)))
+
+    def begin_update():
+        button.configure(state='disabled')
+        update_button.configure(state='disabled')
+        append('正在检查 GitHub 正式版本……')
+        threading.Thread(target=update_worker, daemon=True).start()
+
+    update_button.configure(command=begin_update)
 
     def poll():
         try:
@@ -80,11 +102,38 @@ def main():
                     result_path.set(payload['directory'])
                     append(f"完成：{payload['schools']} 所学校，待核对 {payload['exceptions']} 行。\n源金额 {payload['source_amount']} = 已分类 {payload['classified_amount']} + 待核对 {payload['pending_amount']}\n输出：{payload['directory']}")
                     button.configure(state='normal')
+                    update_button.configure(state='normal')
                     report_button.configure(state='normal')
                     messagebox.showinfo('生成完成', '点击“查看核对报告”，可查看关键金额和待核对源行号。Excel 打开后会自动计算汇总公式。')
+                elif kind == 'update':
+                    if payload and messagebox.askyesno('发现新版本', f"当前 v{VERSION}，最新 {payload['version']}。是否下载？\nEXE 版本下载完成后将关闭并重启。"):
+                        append('正在下载新版本并校验文件……')
+                        threading.Thread(target=update_worker, args=(payload,), daemon=True).start()
+                    else:
+                        button.configure(state='normal')
+                        update_button.configure(state='normal')
+                        if not payload:
+                            messagebox.showinfo('检查更新', '当前已经是最新正式版本。')
+                elif kind == 'downloaded':
+                    if getattr(sys, 'frozen', False):
+                        try:
+                            install_update(payload)
+                        except Exception as error:
+                            button.configure(state='normal')
+                            update_button.configure(state='normal')
+                            messagebox.showerror('更新失败', str(error))
+                        else:
+                            root.destroy()
+                            return
+                    else:
+                        button.configure(state='normal')
+                        update_button.configure(state='normal')
+                        os.startfile(str(payload.parent))
+                        messagebox.showinfo('下载完成', '当前为源码运行模式。已打开下载目录，请运行其中的 BillSplitter.exe。')
                 else:
                     append('失败：' + payload)
                     button.configure(state='normal')
+                    update_button.configure(state='normal')
                     messagebox.showerror('未完成', payload)
         except queue.Empty:
             pass

@@ -25,3 +25,11 @@
 - 使用原始 10 月账单实际导出：13 个学校文件、10,754 条学校明细；逐一重新读取核对均有四张表。
 - 源销售金额 2,941,070.33 元 = 已分类 2,891,552.50 元 + 待核对 49,517.83 元；待核对 533 行。
 - 实际结果位于 outputs/ 下的独立目录（Git 忽略）。未人工逐页检查 Excel 视觉版式，未验证 Excel 本机公式重算。
+
+## 0.3.0 打包与更新
+
+新增 version.py、updater.py、tests/test_updater.py、build.bat、requirements-build.txt、.github/workflows/release.yml。当前版本 0.3.0，仓库 WEBNSNM/bill-splitter。GitHub 标签 vVERSION 自动正式发布；手动 workflow 仅产出制品。用户主动检查更新，不上传源账单，处理账单与更新互斥。更新助手保留 EXE.previous，恢复失败时弹窗显示备份位置。临时下载目录保留供排错。
+
+自动化 7 项测试通过，涵盖原有账单导出和更新版本比较、资产有效性、下载及校验失败。尚未执行真实 GitHub 发布及两个版本间自更新验收；见 README 最后验收步骤。不要将线上验证记为已通过。后续需检查首次 EXE 启动与跨版本替换。
+
+本机补充验证：PyInstaller 6.20.0 在 Python 3.14.6 下打包成功；dist/BillSplitter.exe 实际启动，窗口标题“学校账单分类工具 v0.3.0”，进程 Responding=True。源码界面构建检查通过。GitHub Actions 使用 Python 3.12，尚未远程执行。
