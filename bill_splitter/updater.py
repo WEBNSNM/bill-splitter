@@ -92,7 +92,7 @@ try {
 } catch {
     if (Test-Path -LiteralPath $backup) { Copy-Item -LiteralPath $backup -Destination $Target -Force -ErrorAction SilentlyContinue }
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show('更新失败，旧版备份位于：' + $backup + "`n" + $_.Exception.Message, '账单工具更新')
+    [System.Windows.Forms.MessageBox]::Show('更新失败，旧版备份位于：' + $backup + "`n" + $_.Exception.Message, 'wuli娟娟更新')
 }
 ''', encoding='utf-8-sig')
     import os
