@@ -26,18 +26,18 @@ jobs:
           import os
           from bill_splitter.version import VERSION
           assert os.environ['GITHUB_REF_NAME'] == 'v' + VERSION, 'Tag must match VERSION'
-      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name BillSplitter app.py
+      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli娟娟 app.py
       - name: Checksum
         shell: pwsh
         run: |
-          $digest = (Get-FileHash -LiteralPath dist/BillSplitter.exe -Algorithm SHA256).Hash.ToLower()
-          Set-Content -LiteralPath dist/BillSplitter.exe.sha256 -Value "$digest  BillSplitter.exe" -Encoding ascii
+          $digest = (Get-FileHash -LiteralPath 'dist/wuli娟娟.exe' -Algorithm SHA256).Hash.ToLower()
+          Set-Content -LiteralPath 'dist/wuli娟娟.exe.sha256' -Value "$digest  wuli娟娟.exe" -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
-          name: BillSplitter-Windows
-          path: dist/BillSplitter.exe*
+          name: wuli娟娟-Windows
+          path: dist/wuli娟娟.exe*
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$env:GITHUB_REF_NAME" dist/BillSplitter.exe dist/BillSplitter.exe.sha256 --verify-tag --generate-notes
+        run: gh release create "$env:GITHUB_REF_NAME" 'dist/wuli娟娟.exe' 'dist/wuli娟娟.exe.sha256' --verify-tag --generate-notes

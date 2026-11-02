@@ -4,9 +4,9 @@ cd /d "%~dp0"
 if errorlevel 1 goto failed
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 if errorlevel 1 goto failed
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name BillSplitter app.py
+.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli娟娟 app.py
 if errorlevel 1 goto failed
-echo EXE: %cd%\dist\BillSplitter.exe
+echo EXE: %cd%\dist\wuli娟娟.exe
 pause
 exit /b 0
 :failed

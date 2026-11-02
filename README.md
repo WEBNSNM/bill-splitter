@@ -55,20 +55,20 @@ python -m venv .venv
 
 ## EXE 安装、打包和更新（0.3.0）
 
-普通使用者不需要安装 Python。首次从本项目 GitHub Releases 下载 `BillSplitter.exe`，放在自己有写入权限的文件夹，双击运行。支持 Windows 10/11 64 位。不要直接在压缩包内运行。
+普通使用者不需要安装 Python。首次从本项目 GitHub Releases 下载 `wuli娟娟.exe`，放在自己有写入权限的文件夹，双击运行。支持 Windows 10/11 64 位。不要直接在压缩包内运行。
 
 界面右上角显示当前版本，点击“检查更新”。发现更高的正式版本后确认下载，程序校验 SHA256，随后关闭旧程序、替换并重新启动。旧程序保存在同目录 `.previous` 文件中。生成账单时禁用更新；不会上传账单。源码运行时只下载 EXE 并打开所在目录，不替换源码。检查更新需要能访问 GitHub；无网络不影响账单功能。校验用于检测下载损坏，不代替代码签名；EXE 暂未签名。
 
 ### 本机打包
 
-先运行 install.bat，再双击 build.bat。结果位于 `dist/BillSplitter.exe`。开发依赖和 PyInstaller 版本在 requirements-build.txt 中。
+先运行 install.bat，再双击 build.bat。结果位于 `dist/wuli娟娟.exe`。开发依赖和 PyInstaller 版本在 requirements-build.txt 中。
 
 ### GitHub Actions 发布
 
 仓库地址：https://github.com/WEBNSNM/bill-splitter 。自动更新当前使用公开仓库 Releases，不在程序内嵌入私人令牌。
 
 1. 将这些项目修改提交并推送到 GitHub。
-2. Actions 页面选择 Windows EXE → Run workflow，可先试打包；结束后下载 BillSplitter-Windows 制品。这种手动运行不会发布正式版本。
+2. Actions 页面选择 Windows EXE → Run workflow，可先试打包；结束后下载 `wuli娟娟-Windows` 制品。手动运行不会发布正式版本；想测试自动更新，需把 v0.3.1 的 EXE 和校验文件手动附加到 v0.3.1 GitHub Release。
 3. 正式发布前修改 `bill_splitter/version.py` 中 VERSION，并更新 CHANGELOG.md，例如下一版改为 0.3.1。
 4. 提交推送代码，再执行以下命令（首次当前版使用 v0.3.0）：
 
@@ -77,7 +77,7 @@ git tag v0.3.0
 git push origin v0.3.0
 ```
 
-5. 标签触发测试、Windows 打包、SHA256 生成、GitHub Release 发布。标签必须与代码 VERSION 完全一致。发布资产必须包含固定名称 `BillSplitter.exe` 和 `BillSplitter.exe.sha256`，不要手动更改名称。
+5. 标签触发测试、Windows 打包、SHA256 生成、GitHub Release 发布。标签必须与代码 VERSION 完全一致。发布资产名称为 `wuli娟娟.exe` 和 `wuli娟娟.exe.sha256`，不要手动更改名称。
 6. 下一版用 v0.3.1 等新标签，不重用旧标签。已安装旧 EXE 的用户点击检查更新即可获取新版。
 
 首次发布前，检查更新可能提示“尚无公开正式版本”。仓库改名时需同时更新 version.py 中 GITHUB_REPOSITORY。安装目录无法写入时，可手动下载并移至可写目录。

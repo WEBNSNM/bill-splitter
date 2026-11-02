@@ -5,14 +5,14 @@ from pathlib import Path
 from unittest.mock import patch
 from io import BytesIO
 from bill_splitter.updater import version_tuple, select_release
-from bill_splitter.updater import verify_checksum, download_update
+from bill_splitter.updater import verify_checksum, download_update, EXE_NAME, CHECKSUM_NAME
 
 
 class UpdateTests(unittest.TestCase):
     def release(self):
         return {'tag_name': 'v9.0.0', 'assets': [
             {'name': name, 'browser_download_url': 'https://github.com/WEBNSNM/bill-splitter/releases/download/v9.0.0/' + name}
-            for name in ('BillSplitter.exe', 'BillSplitter.exe.sha256')]}
+            for name in (EXE_NAME, CHECKSUM_NAME)]}
 
     def test_release_and_invalid_host(self):
         release = self.release()
@@ -31,6 +31,7 @@ class UpdateTests(unittest.TestCase):
             path = download_update(select_release(self.release()))
         self.addCleanup(lambda: __import__('shutil').rmtree(path.parent))
         self.assertEqual(path.read_bytes(), data)
+        self.assertEqual(path.name, EXE_NAME)
         with self.assertRaises(ValueError):
             verify_checksum(path, '0' * 64)
         with self.assertRaises(ValueError):

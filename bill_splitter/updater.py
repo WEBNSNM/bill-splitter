@@ -11,6 +11,9 @@ from urllib.request import Request, urlopen
 
 from .version import VERSION, GITHUB_REPOSITORY
 
+EXE_NAME = 'wuli娟娟.exe'
+CHECKSUM_NAME = EXE_NAME + '.sha256'
+
 
 def version_tuple(value):
     if not re.fullmatch(r'v?\d+\.\d+\.\d+', value):
@@ -24,7 +27,7 @@ def select_release(release, current=VERSION):
     if version_tuple(release['tag_name']) <= version_tuple(current):
         return None
     assets = {a['name']: a['browser_download_url'] for a in release['assets']}
-    if not all(n in assets for n in ('BillSplitter.exe', 'BillSplitter.exe.sha256')):
+    if not all(n in assets for n in (EXE_NAME, CHECKSUM_NAME)):
         raise ValueError('新版本尚未提供完整的 EXE 和校验文件，请稍后重试。')
     for url in assets.values():
         if not url.startswith(f'https://github.com/{GITHUB_REPOSITORY}/releases/download/'):
@@ -59,10 +62,10 @@ def verify_checksum(path, checksum):
 
 def download_update(release):
     folder = Path(tempfile.mkdtemp(prefix='BillSplitter-update-'))
-    target = folder / 'BillSplitter.exe'
-    with fetch(release['assets']['BillSplitter.exe.sha256']) as response:
+    target = folder / EXE_NAME
+    with fetch(release['assets'][CHECKSUM_NAME]) as response:
         checksum = response.read(4096).decode('ascii')
-    with fetch(release['assets']['BillSplitter.exe']) as response, target.open('wb') as output:
+    with fetch(release['assets'][EXE_NAME]) as response, target.open('wb') as output:
         while block := response.read(1024 * 1024):
             output.write(block)
     verify_checksum(target, checksum)
