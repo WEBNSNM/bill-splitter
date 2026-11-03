@@ -149,13 +149,15 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                 exceptions.append([line, school, values[ai], day.isoformat(), str(amount),
                                    '客户名为空', record['object_name'], '客户名'])
         for records in groups.values():
-            use_object = any('活动单' in str(r['object_name'] or '') for r in records)
+            use_object = oi is not None
             for record in records:
                 reason = ''
                 if use_object:
-                    matches = [name for name in ('老师', '学生', '活动单')
-                               if name in str(record['object_name'] or '')]
-                    category = matches[0] if len(matches) == 1 else '待核对'
+                    object_name = str(record['object_name'] or '').strip()
+                    matches = [name for name in ('老师', '教师', '学生', '活动单')
+                               if name in object_name]
+                    category = {'教师': '老师', '老师': '老师', '学生': '学生',
+                                '活动单': '活动单'}.get(object_name, '待核对')
                     if category == '待核对':
                         reason = ('对象名称同时命中多个分类' if len(matches) > 1
                                   else '对象名称未命中任何分类')
@@ -190,7 +192,7 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
             summary = out.create_sheet('总计表')
             teacher = out.create_sheet('老师明细')
             student = out.create_sheet('学生明细')
-            categories = ['老师', '学生'] + (['活动单'] if records[0]['use_object'] else [])
+            categories = ['老师', '学生'] + (['活动单'] if any(r['category'] == '活动单' for r in records) else [])
             write_details(detail, output_headers, records, output_mi, output_di)
             for name, sheet in [('老师', teacher), ('学生', student)]:
                 write_details(sheet, output_headers, [r for r in records if r['category'] == name],
@@ -249,7 +251,7 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                       exception_details=[dict(source_row=r[0], source_sheet=source_sheet, school=r[1],
                                               address=r[2], date=r[3], amount=r[4], reason=r[5],
                                               object_name=r[6], classification_field=r[7]) for r in exceptions],
-                      note='每校有活动单时按对象名称分类，总计含老师+学生+活动单；否则按收货地址分类，总计含老师+学生；待核对记录保留在全部明细。空客户名仅在待核对清单。金额按每行四舍五入到分。')
+                      note='有对象名称列时严格按其值分类（教师/老师、学生、活动单），仅缺少该列时按收货地址分类；每校有已分类活动单时增加活动单明细和汇总列；待核对记录保留在全部明细。空客户名仅在待核对清单。金额按每行四舍五入到分。')
         (run_dir / '运行报告.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         write_report(result)
         return result

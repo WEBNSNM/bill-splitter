@@ -94,7 +94,7 @@ class BillTests(unittest.TestCase):
                     for row in range(1, sheet.max_row + 1):
                         self.assertEqual(sheet.row_dimensions[row].height, 17.25)
                 self.assertEqual(book['全部明细']['E2'].value, 1.01 if school['school'] == 'A' else 7)
-                self.assertEqual(book['老师明细'].max_row, 2)
+                self.assertEqual(book['老师明细'].max_row, 2 if school['school'] == 'A' else 1)
                 if school['school'] == 'A':
                     self.assertEqual(book['老师明细']['C2'].value, '老师')
                     self.assertEqual(book['活动单明细']['E2'].value, 3)
@@ -105,11 +105,36 @@ class BillTests(unittest.TestCase):
                     self.assertEqual(summary['D4'].value, '=SUM(D2:D3)')
                     self.assertEqual(summary['E4'].value, '=SUM(E2:E3)')
                 else:
-                    self.assertEqual(book['学生明细'].max_row, 1)
+                    self.assertEqual(book['学生明细'].max_row, 2)
                 book.close()
             html = Path(result['report_html']).read_text(encoding='utf-8')
             self.assertIn('对象名称', html)
             self.assertEqual(result['object_column'], 'D')
+
+    def test_object_column_always_controls_classification_without_activity(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / 'source.xlsx'
+            wb = Workbook()
+            wb.active.append(['客户名', '收货地址', '对象名称', '配送日期', '销售金额(元)'])
+            for address, name, amount in [('普通地址', '学生', 1), ('普通地址', '教师', 2),
+                                          ('老师学生', ' 学生 ', 3), ('老师', None, 4),
+                                          ('学生', '未知', 5), ('老师', '学生餐', 6)]:
+                wb.active.append(['A', address, name, '2026-10-01', amount])
+            wb.save(source)
+            wb.close()
+            result = export_bills(source, root / 'out')
+            self.assertEqual(result['classified_amount'], '6.00')
+            self.assertEqual(result['pending_amount'], '15.00')
+            self.assertEqual([r['source_row'] for r in result['exception_details']], [5, 6, 7])
+            self.assertTrue(all(r['classification_field'] == '对象名称' for r in result['exception_details']))
+            book = load_workbook(next(Path(result['directory']).glob('*.xlsx')))
+            self.assertEqual(len(book.sheetnames), 4)
+            self.assertEqual(book['学生明细'].max_row, 3)
+            self.assertEqual(book['老师明细']['E2'].value, 2)
+            self.assertEqual(book['总计表']['B2'].value, 2)
+            self.assertEqual(book['总计表']['C2'].value, 4)
+            book.close()
 
     def test_serial_column_in_middle_keeps_date_amount_mapping(self):
         with tempfile.TemporaryDirectory() as td:

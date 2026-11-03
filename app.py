@@ -58,8 +58,8 @@ def main():
     options.pack(fill='x', pady=10)
     ttk.Label(options, text='③ 金额口径', width=10).pack(side='left')
     ttk.Combobox(options, textvariable=amount, values=['销售金额(元)', '下单金额(元)'], state='readonly').pack(side='left')
-    ttk.Label(panel, text='有活动单：按对象名称分为老师 / 学生 / 活动单').pack(anchor='w', pady=5)
-    ttk.Label(panel, text='无活动单：按收货地址分类；分类冲突或未命中时标注源行号供核对。', style='Subtitle.TLabel').pack(anchor='w', pady=5)
+    ttk.Label(panel, text='有对象名称列：按教师 / 学生 / 活动单分类（兼容“老师”）').pack(anchor='w', pady=5)
+    ttk.Label(panel, text='仅缺少对象名称列时按收货地址分类；空值或未知值需核对。', style='Subtitle.TLabel').pack(anchor='w', pady=5)
     # 先为操作栏保留空间，防止日志区域在小窗口或高 DPI 下挤掉按钮。
     actions = ttk.Frame(panel)
     actions.pack(side='bottom', fill='x', pady=(8, 0))
