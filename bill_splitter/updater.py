@@ -1,13 +1,14 @@
 """Opt-in GitHub Releases updates; no bill data leaves the computer."""
 import hashlib
-import json
 import re
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import quote
 
 from .version import VERSION, GITHUB_REPOSITORY
 
@@ -42,12 +43,37 @@ def fetch(url):
 
 def check_update():
     try:
-        with fetch(f'https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest') as response:
-            return select_release(json.load(response))
+        with fetch(f'https://github.com/{GITHUB_REPOSITORY}/releases.atom') as response:
+            return parse_release_feed(response.read())
     except HTTPError as error:
         if error.code == 404:
             raise ValueError('尚无公开正式版本，或仓库尚未公开。') from error
         raise
+
+
+def release_from_tag(tag, link):
+    expected = f'https://github.com/{GITHUB_REPOSITORY}/releases/tag/'
+    if not link.startswith(expected):
+        raise ValueError('GitHub 更新订阅源地址无效。')
+    if version_tuple(tag) <= version_tuple(VERSION):
+        return None
+    base = f'https://github.com/{GITHUB_REPOSITORY}/releases/download/{quote(tag, safe="")}'
+    assets = {name: f'{base}/{quote(name, safe="")}' for name in (EXE_NAME, CHECKSUM_NAME)}
+    return {'version': tag, 'assets': assets}
+
+
+def parse_release_feed(data):
+    root = ET.fromstring(data)
+    namespace = {'atom': 'http://www.w3.org/2005/Atom'}
+    entries = root.findall('atom:entry', namespace)
+    if not entries:
+        return None
+    entry = entries[0]
+    tag = (entry.findtext('atom:title', default='', namespaces=namespace)).strip()
+    link = entry.find('atom:link', namespace)
+    if link is None or not tag:
+        raise ValueError('无法读取 GitHub 最新版本信息。')
+    return release_from_tag(tag, link.attrib.get('href', ''))
 
 
 def verify_checksum(path, checksum):

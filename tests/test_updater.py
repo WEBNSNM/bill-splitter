@@ -6,6 +6,7 @@ from unittest.mock import patch
 from io import BytesIO
 from bill_splitter.updater import version_tuple, select_release
 from bill_splitter.updater import verify_checksum, download_update, EXE_NAME, CHECKSUM_NAME
+from bill_splitter.updater import parse_release_feed, release_from_tag, check_update
 
 
 class UpdateTests(unittest.TestCase):
@@ -47,3 +48,19 @@ class UpdateTests(unittest.TestCase):
         self.assertIsNone(select_release(release, '0.3.0'))
         with self.assertRaises(ValueError):
             select_release(release, '0.2.0')
+
+    def test_release_feed_does_not_use_rate_limited_api(self):
+        feed = b'''<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+        <entry><title>v0.9.0</title><link href="https://github.com/WEBNSNM/bill-splitter/releases/tag/v0.9.0" /></entry>
+        <entry><title>v0.8.0</title><link href="https://github.com/WEBNSNM/bill-splitter/releases/tag/v0.8.0" /></entry>
+        </feed>'''
+        with patch('bill_splitter.updater.fetch', return_value=BytesIO(feed)) as fetcher:
+            result = check_update()
+        self.assertEqual(result['version'], 'v0.9.0')
+        self.assertIn('releases.atom', fetcher.call_args.args[0])
+        self.assertNotIn('api.github.com', fetcher.call_args.args[0])
+
+    def test_release_feed_empty_and_untrusted_tag(self):
+        self.assertIsNone(parse_release_feed(b'<feed xmlns="http://www.w3.org/2005/Atom"/>'))
+        with self.assertRaises(ValueError):
+            release_from_tag('v1.0.0', 'https://example.com/releases/tag/v1.0.0')

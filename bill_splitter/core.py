@@ -78,7 +78,9 @@ def style_sheet(ws):
         cell.font = Font(name='微软雅黑', bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor='234E70')
         cell.alignment = Alignment(vertical='center', wrap_text=True)
-    ws.row_dimensions[1].height = 32
+    ws.sheet_format.defaultRowHeight = 17.25
+    for row in range(1, ws.max_row + 1):
+        ws.row_dimensions[row].height = 17.25
     for col in ws.columns:
         values = [len(str(c.value or '')) for c in list(col)[:100]]
         ws.column_dimensions[col[0].column_letter].width = min(48, max(14, max(values) * 1.5 + 2))
@@ -121,6 +123,12 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
             if headers.count(label) != 1:
                 raise ValueError(f'第一行须有唯一表头“{label}”。')
         ni, ai, di, mi = [headers.index(label) for label in required]
+        if headers.count('对象名称') > 1:
+            raise ValueError('第一行须有唯一表头“对象名称”。')
+        oi = headers.index('对象名称') if '对象名称' in headers else None
+        output_indexes = [i for i, label in enumerate(headers) if label != '序号']
+        output_headers = [headers[i] for i in output_indexes]
+        output_mi, output_di = output_indexes.index(mi), output_indexes.index(di)
         for line, values in enumerate(iterator, 2):
             if all(v is None or v == '' for v in values):
                 continue
@@ -130,20 +138,41 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                 continue
             amount = money(values[mi], line)
             day = delivery_date(values[di], line, wb.epoch)
-            category = classify(values[ai])
             source_amount += amount
-            reason = ''
-            if not school:
-                reason = '客户名为空'
-            elif category == '待核对':
-                reason = ('同时命中老师和学生关键词' if any(k in str(values[ai] or '') for k in TEACHER)
-                          else '未命中任何分类关键词')
-            record = dict(values=list(values), amount=amount, date=day, category=category)
+            record = dict(values=[values[i] for i in output_indexes], amount=amount, date=day,
+                          source_row=line, school=school, address=values[ai],
+                          object_name=values[oi] if oi is not None else None)
             if school:
                 groups[school].append(record)
-            if reason:
+            else:
                 pending += amount
-                exceptions.append([line, school, values[ai], day.isoformat(), str(amount), reason])
+                exceptions.append([line, school, values[ai], day.isoformat(), str(amount),
+                                   '客户名为空', record['object_name'], '客户名'])
+        for records in groups.values():
+            use_object = any('活动单' in str(r['object_name'] or '') for r in records)
+            for record in records:
+                reason = ''
+                if use_object:
+                    matches = [name for name in ('老师', '学生', '活动单')
+                               if name in str(record['object_name'] or '')]
+                    category = matches[0] if len(matches) == 1 else '待核对'
+                    if category == '待核对':
+                        reason = ('对象名称同时命中多个分类' if len(matches) > 1
+                                  else '对象名称未命中任何分类')
+                else:
+                    category = classify(record['address'])
+                    if category == '待核对':
+                        reason = ('同时命中老师和学生关键词'
+                                  if any(k in str(record['address'] or '') for k in TEACHER)
+                                  else '未命中任何分类关键词')
+                record['category'] = category
+                record['use_object'] = use_object
+                if reason:
+                    pending += record['amount']
+                    exceptions.append([record['source_row'], record['school'], record['address'],
+                                       record['date'].isoformat(), str(record['amount']), reason,
+                                       record['object_name'], '对象名称' if use_object else '收货地址'])
+        exceptions.sort(key=lambda item: item[0])
         if not groups:
             raise ValueError('没有可导出的学校数据。')
     finally:
@@ -161,22 +190,32 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
             summary = out.create_sheet('总计表')
             teacher = out.create_sheet('老师明细')
             student = out.create_sheet('学生明细')
-            write_details(detail, headers, records, mi, di)
-            write_details(teacher, headers, [r for r in records if r['category'] == '老师'], mi, di)
-            write_details(student, headers, [r for r in records if r['category'] == '学生'], mi, di)
-            daily = defaultdict(lambda: {'老师': Decimal(0), '学生': Decimal(0)})
+            categories = ['老师', '学生'] + (['活动单'] if records[0]['use_object'] else [])
+            write_details(detail, output_headers, records, output_mi, output_di)
+            for name, sheet in [('老师', teacher), ('学生', student)]:
+                write_details(sheet, output_headers, [r for r in records if r['category'] == name],
+                              output_mi, output_di)
+            if '活动单' in categories:
+                activity = out.create_sheet('活动单明细')
+                write_details(activity, output_headers, [r for r in records if r['category'] == '活动单'],
+                              output_mi, output_di)
+            daily = defaultdict(lambda: {name: Decimal(0) for name in categories})
             for r in records:
-                daily[r['date']]
-                if r['category'] in ('老师', '学生'):
-                    daily[r['date']][r['category']] += r['amount']
-            summary.append(['配送日期', '老师', '学生', '总计'])
+                amounts = daily[r['date']]
+                if r['category'] in categories:
+                    amounts[r['category']] += r['amount']
+            summary.append(['配送日期', *categories, '总计'])
+            last_category = get_column_letter(len(categories) + 1)
+            total_column = len(categories) + 2
             for day, amounts in sorted(daily.items()):
                 row = summary.max_row + 1
-                summary.append([day, float(amounts['老师']), float(amounts['学生']), f'=SUM(B{row}:C{row})'])
+                summary.append([day, *[float(amounts[name]) for name in categories],
+                                f'=SUM(B{row}:{last_category}{row})'])
                 summary.cell(row, 1).number_format = 'yyyy-mm-dd'
             last = summary.max_row
-            summary.append(['合计', f'=SUM(B2:B{last})', f'=SUM(C2:C{last})', f'=SUM(D2:D{last})'])
-            for cells in summary.iter_rows(min_row=2, min_col=2, max_col=4):
+            summary.append(['合计', *[f'=SUM({get_column_letter(c)}2:{get_column_letter(c)}{last})'
+                                       for c in range(2, total_column + 1)]])
+            for cells in summary.iter_rows(min_row=2, min_col=2, max_col=total_column):
                 for cell in cells:
                     cell.number_format = '#,##0.00'
             style_sheet(summary)
@@ -197,18 +236,20 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                 progress(f'已生成 {index}/{len(groups)}：{school}')
         with (run_dir / '待核对记录.csv').open('w', encoding='utf-8-sig', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['源行号', '客户名', '收货地址', '配送日期', '金额', '原因'])
+            writer.writerow(['源行号', '客户名', '收货地址', '配送日期', '金额', '原因', '对象名称', '分类字段'])
             for row in exceptions:
                 writer.writerow([("'" + str(v)) if str(v).startswith(('=', '+', '-', '@')) else v for v in row])
         result = dict(directory=str(run_dir), schools=len(groups), exceptions=len(exceptions),
                       skipped_totals=skipped, source_amount=f'{source_amount:.2f}',
                       classified_amount=f'{source_amount-pending:.2f}', pending_amount=f'{pending:.2f}',
                       source=str(source), amount_column=amount_column, school_details=school_reports,
+                      object_column=get_column_letter(oi + 1) if oi is not None else None,
                       source_sheet=source_sheet, address_column=get_column_letter(ai + 1),
                       customer_column=get_column_letter(ni + 1), report_html=str(run_dir / '核对报告.html'),
                       exception_details=[dict(source_row=r[0], source_sheet=source_sheet, school=r[1],
-                                              address=r[2], date=r[3], amount=r[4], reason=r[5]) for r in exceptions],
-                      note='总计表仅含老师+学生；待核对记录保留在全部明细。空客户名仅在待核对清单。金额按每行四舍五入到分。')
+                                              address=r[2], date=r[3], amount=r[4], reason=r[5],
+                                              object_name=r[6], classification_field=r[7]) for r in exceptions],
+                      note='每校有活动单时按对象名称分类，总计含老师+学生+活动单；否则按收货地址分类，总计含老师+学生；待核对记录保留在全部明细。空客户名仅在待核对清单。金额按每行四舍五入到分。')
         (run_dir / '运行报告.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         write_report(result)
         return result
