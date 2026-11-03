@@ -44,7 +44,11 @@ def fetch(url):
 def check_update():
     try:
         with fetch(f'https://github.com/{GITHUB_REPOSITORY}/releases.atom') as response:
-            return parse_release_feed(response.read())
+            data = response.read()
+            root = ET.fromstring(data)
+            if not root.findall('{http://www.w3.org/2005/Atom}entry'):
+                raise ValueError('尚无公开发布版本，暂时无法提供在线更新；请等待项目发布正式版本。')
+            return parse_release_feed(data)
     except HTTPError as error:
         if error.code == 404:
             raise ValueError('尚无公开正式版本，或仓库尚未公开。') from error

@@ -1,2 +1,2 @@
-VERSION = '0.3.3'
+VERSION = '0.3.4'
 GITHUB_REPOSITORY = 'WEBNSNM/bill-splitter'

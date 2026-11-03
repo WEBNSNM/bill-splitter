@@ -60,6 +60,12 @@ class UpdateTests(unittest.TestCase):
         self.assertIn('releases.atom', fetcher.call_args.args[0])
         self.assertNotIn('api.github.com', fetcher.call_args.args[0])
 
+    def test_check_update_empty_feed_is_not_latest_version(self):
+        with patch('bill_splitter.updater.fetch', return_value=BytesIO(
+                b'<feed xmlns="http://www.w3.org/2005/Atom"/>')):
+            with self.assertRaisesRegex(ValueError, '尚无公开发布版本'):
+                check_update()
+
     def test_release_feed_empty_and_untrusted_tag(self):
         self.assertIsNone(parse_release_feed(b'<feed xmlns="http://www.w3.org/2005/Atom"/>'))
         with self.assertRaises(ValueError):
