@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-11-03 · Actions 发布标签校验修复
+
+- 原因：GitHub Actions 的 shell: python 将步骤写入临时目录，Python导入路径不包含仓库，导致 ModuleNotFoundError: bill_splitter。
+- 修复：标签校验步骤显式将 GITHUB_WORKSPACE 加入模块路径，保留标签与 VERSION 一致性校验。
+- 验证：新增临时脚本回归测试，修复前复现同一错误，修复后正确标签通过、错误标签拒绝；全套14项测试通过。
+- 限制：未远程执行Actions、打包或发布。旧失败标签指向旧工作流，单纯Re-run仍使用旧代码；应提交修复后提高版本并推送新标签。
+
+
 ## 2026-11-03 · 更新检查诊断
 
 - 用户正在运行从 GitHub 下载的 v0.3.2 EXE，检查更新报 HTTP 403 rate limit exceeded；当前源码 v0.3.3 已使用 releases.atom，避开受限 API，旧 EXE 需要手动替换一次。
