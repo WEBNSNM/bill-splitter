@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from bill_splitter.core import export_bills
+from bill_splitter.delivery import export_delivery
 from bill_splitter.version import VERSION
 from bill_splitter.updater import check_update, download_update, install_update
 import sys
@@ -31,6 +32,11 @@ def main():
     style.configure('TEntry', fieldbackground='white', foreground='#503c46', padding=8, bordercolor='#edc8d8', lightcolor='#edc8d8', darkcolor='#edc8d8')
     style.configure('TCombobox', padding=7, foreground='#503c46', arrowcolor='#ad4772')
     style.map('TCombobox', fieldbackground=[('readonly', 'white')], selectbackground=[('readonly', '#f6dce7')], selectforeground=[('readonly', '#503c46')])
+    home = ttk.Frame(root, padding=40)
+    home.pack(fill='both', expand=True)
+    ttk.Label(home, text='wuli娟娟', style='Title.TLabel').pack(anchor='w', pady=(30, 10))
+    ttk.Label(home, text='今天想整理什么？选择一个功能开始吧。').pack(anchor='w', pady=(0, 30))
+    mode = tk.StringVar(value='bill')
     panel = ttk.Frame(root, padding=24)
     panel.pack(fill='both', expand=True)
     heading = ttk.Frame(panel)
@@ -39,7 +45,8 @@ def main():
     update_button = ttk.Button(heading, text='v' + VERSION + ' · 检查更新')
     update_button.pack(side='right')
     ttk.Label(panel, text='把繁琐的账单，整理得明明白白。', style='Subtitle.TLabel').pack(anchor='w', pady=(5, 4))
-    ttk.Label(panel, text='学校账单自动分类  ·  每校四张表，有活动单时五张表  ·  本地处理', style='Subtitle.TLabel').pack(anchor='w', pady=(0, 20))
+    mode_description = ttk.Label(panel, style='Subtitle.TLabel')
+    mode_description.pack(anchor='w', pady=(0, 20))
     source = tk.StringVar()
     output = tk.StringVar()
     amount = tk.StringVar(value='销售金额(元)')
@@ -58,8 +65,10 @@ def main():
     options.pack(fill='x', pady=10)
     ttk.Label(options, text='③ 金额口径', width=10).pack(side='left')
     ttk.Combobox(options, textvariable=amount, values=['销售金额(元)', '下单金额(元)'], state='readonly').pack(side='left')
-    ttk.Label(panel, text='有对象名称列：按教师 / 学生 / 活动单分类（兼容“老师”）').pack(anchor='w', pady=5)
-    ttk.Label(panel, text='仅缺少对象名称列时按收货地址分类；空值或未知值需核对。', style='Subtitle.TLabel').pack(anchor='w', pady=5)
+    rule_label = ttk.Label(panel)
+    rule_label.pack(anchor='w', pady=5)
+    detail_label = ttk.Label(panel, style='Subtitle.TLabel')
+    detail_label.pack(anchor='w', pady=5)
     # 先为操作栏保留空间，防止日志区域在小窗口或高 DPI 下挤掉按钮。
     actions = ttk.Frame(panel)
     actions.pack(side='bottom', fill='x', pady=(8, 0))
@@ -76,10 +85,11 @@ def main():
         log.see('end')
         log.configure(state='disabled')
 
-    def worker(src, dest, col):
+    def worker(src, dest, col, selected_mode):
         try:
-            result = export_bills(src, dest, col, lambda text: events.put(('log', text)))
-            events.put(('done', result))
+            callback = lambda text: events.put(('log', text))
+            result = export_delivery(src, dest, callback) if selected_mode == 'delivery' else export_bills(src, dest, col, callback)
+            events.put(('delivery_done' if selected_mode == 'delivery' else 'done', result))
         except Exception as error:
             events.put(('error', str(error)))
 
@@ -89,8 +99,10 @@ def main():
             return
         button.configure(state='disabled')
         update_button.configure(state='disabled')
+        home_button.configure(state='disabled')
+        report_button.configure(state='disabled')
         append('正在检查源数据并生成文件……')
-        threading.Thread(target=worker, args=(source.get(), output.get(), amount.get()), daemon=True).start()
+        threading.Thread(target=worker, args=(source.get(), output.get(), amount.get(), mode.get()), daemon=True).start()
 
     def update_worker(download=None):
         try:
@@ -99,6 +111,7 @@ def main():
             events.put(('error', '检查或下载更新失败：' + str(error)))
 
     def begin_update():
+        home_button.configure(state='disabled')
         button.configure(state='disabled')
         update_button.configure(state='disabled')
         append('正在检查 GitHub 正式版本……')
@@ -110,8 +123,16 @@ def main():
         try:
             while True:
                 kind, payload = events.get_nowait()
+                if kind not in ('log',):
+                    home_button.configure(state='normal')
                 if kind == 'log':
                     append(payload)
+                elif kind == 'delivery_done':
+                    result_path.set(payload['directory'])
+                    append(f"完成：{payload['schools']} 所学校，{payload['sheets']} 张配送单，{payload['rows']} 条明细。\n结算总金额：{payload['total']} 元\n输出：{payload['directory']}")
+                    button.configure(state='normal')
+                    update_button.configure(state='normal')
+                    messagebox.showinfo('配送单生成完成', '已按学校、日期、分类对象生成配送单，点击“打开生成文件夹”查看。')
                 elif kind == 'done':
                     result_path.set(payload['directory'])
                     append(f"完成：{payload['schools']} 所学校，待核对 {payload['exceptions']} 行。\n源金额 {payload['source_amount']} = 已分类 {payload['classified_amount']} + 待核对 {payload['pending_amount']}\n输出：{payload['directory']}")
@@ -121,6 +142,7 @@ def main():
                     messagebox.showinfo('生成完成', '点击“查看核对报告”，可查看关键金额和待核对源行号。Excel 打开后会自动计算汇总公式。')
                 elif kind == 'update':
                     if payload and messagebox.askyesno('发现新版本', f"当前 v{VERSION}，最新 {payload['version']}。是否下载？\nEXE 版本下载完成后将关闭并重启。"):
+                        home_button.configure(state='disabled')
                         append('正在下载新版本并校验文件……')
                         threading.Thread(target=update_worker, args=(payload,), daemon=True).start()
                     else:
@@ -159,6 +181,41 @@ def main():
                               command=lambda: webbrowser.open((Path(result_path.get()) / '核对报告.html').as_uri()))
     report_button.pack(side='left', padx=10)
     ttk.Button(actions, text='打开生成文件夹', command=lambda: os.startfile(result_path.get()) if result_path.get() else None).pack(side='right')
+    def show_home():
+        panel.pack_forget()
+        home.pack(fill='both', expand=True)
+
+    home_button = ttk.Button(heading, text='返回首页', command=show_home)
+    home_button.pack(side='right', padx=10)
+
+    def choose_mode(selected):
+        mode.set(selected)
+        source.set('')
+        result_path.set('')
+        report_button.configure(state='disabled')
+        if selected == 'delivery':
+            options.pack_forget()
+            mode_description.configure(text='配送单生成  ·  每校一个文件，每日期与分类对象一张单  ·  本地处理')
+            rule_label.configure(text='按“分类对象”分单；结算单价 = 销售单价 × 0.957。')
+            detail_label.configure(text='单价先四舍五入到分，再乘配送量；分类异常会提示源行号。')
+            button.configure(text='生成全部学校配送单')
+        else:
+            options.pack(fill='x', pady=10, before=rule_label)
+            mode_description.configure(text='学校账单自动分类  ·  每校四张表，有活动单时五张表  ·  本地处理')
+            rule_label.configure(text='有对象名称列：按教师 / 学生 / 活动单分类（兼容“老师”）')
+            detail_label.configure(text='仅缺少对象名称列时按收货地址分类；空值或未知值需核对。')
+            button.configure(text='生成全部学校账单')
+        log.configure(state='normal')
+        log.delete('1.0', 'end')
+        log.configure(state='disabled')
+        append('请选择源 Excel 和保存位置。源文件不会被修改。')
+        home.pack_forget()
+        panel.pack(fill='both', expand=True)
+
+    ttk.Button(home, text='账单分类 · 按学校整理账单与分类汇总', style='Primary.TButton', command=lambda: choose_mode('bill')).pack(fill='x', pady=12, ipady=12)
+    ttk.Button(home, text='配送单生成 · 按日期与对象制作配送单', style='Primary.TButton', command=lambda: choose_mode('delivery')).pack(fill='x', pady=12, ipady=12)
+    ttk.Label(home, text='所有账单均在本机处理，源文件保持原样。', style='Subtitle.TLabel').pack(anchor='w', pady=24)
+    panel.pack_forget()
     append('欢迎使用 wuli娟娟。选好账单和保存位置，就可以开始整理啦。')
     root.after(150, poll)
     root.mainloop()
