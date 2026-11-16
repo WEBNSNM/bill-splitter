@@ -4,12 +4,26 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from io import BytesIO
+from urllib.error import HTTPError
 from bill_splitter.updater import version_tuple, select_release
 from bill_splitter.updater import verify_checksum, download_update, EXE_NAME, CHECKSUM_NAME
 from bill_splitter.updater import parse_release_feed, release_from_tag, check_update
 
 
 class UpdateTests(unittest.TestCase):
+    def test_legacy_download_404_uses_published_ascii_assets(self):
+        data = b'new-executable'
+        digest = hashlib.sha256(data).hexdigest().encode()
+        missing = HTTPError('url', 404, 'Not Found', {}, BytesIO())
+        self.addCleanup(missing.close)
+        with patch('bill_splitter.updater.fetch', side_effect=[
+                missing, BytesIO(digest), BytesIO(data)]) as fetcher:
+            path = download_update(select_release(self.release()))
+        self.addCleanup(lambda: __import__('shutil').rmtree(path.parent))
+        self.assertEqual(path.read_bytes(), data)
+        self.assertTrue(fetcher.call_args_list[1].args[0].endswith('/wuli.exe.sha256'))
+        self.assertTrue(fetcher.call_args_list[2].args[0].endswith('/wuli.exe'))
+
     def release(self):
         return {'tag_name': 'v9.0.0', 'assets': [
             {'name': name, 'browser_download_url': 'https://github.com/WEBNSNM/bill-splitter/releases/download/v9.0.0/' + name}

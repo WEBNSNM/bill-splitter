@@ -15,6 +15,7 @@ import sys
 
 def main():
     root = tk.Tk()
+    root.iconbitmap(str(Path(__file__).resolve().parent / 'assets' / 'juan.ico'))
     root.title('wuli娟娟 v' + VERSION)
     root.geometry('900x650')
     root.minsize(780, 600)
@@ -165,7 +166,7 @@ def main():
                         button.configure(state='normal')
                         update_button.configure(state='normal')
                         os.startfile(str(payload.parent))
-                        messagebox.showinfo('下载完成', '当前为源码运行模式。已打开下载目录，请运行其中的 BillSplitter.exe。')
+                        messagebox.showinfo('下载完成', '当前为源码运行模式。已打开下载目录，请运行其中的 wuli娟娟.exe。')
                 else:
                     append('失败：' + payload)
                     button.configure(state='normal')

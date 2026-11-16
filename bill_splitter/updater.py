@@ -1,5 +1,6 @@
 """Opt-in GitHub Releases updates; no bill data leaves the computer."""
 import hashlib
+import shutil
 import re
 import subprocess
 import sys
@@ -28,6 +29,9 @@ def select_release(release, current=VERSION):
     if version_tuple(release['tag_name']) <= version_tuple(current):
         return None
     assets = {a['name']: a['browser_download_url'] for a in release['assets']}
+    for name, published in ((EXE_NAME, 'wuli.exe'), (CHECKSUM_NAME, 'wuli.exe.sha256')):
+        if name not in assets and published in assets:
+            assets[name] = assets[published]
     if not all(n in assets for n in (EXE_NAME, CHECKSUM_NAME)):
         raise ValueError('新版本尚未提供完整的 EXE 和校验文件，请稍后重试。')
     for url in assets.values():
@@ -62,7 +66,7 @@ def release_from_tag(tag, link):
     if version_tuple(tag) <= version_tuple(VERSION):
         return None
     base = f'https://github.com/{GITHUB_REPOSITORY}/releases/download/{quote(tag, safe="")}'
-    assets = {name: f'{base}/{quote(name, safe="")}' for name in (EXE_NAME, CHECKSUM_NAME)}
+    assets = {EXE_NAME: f'{base}/wuli.exe', CHECKSUM_NAME: f'{base}/wuli.exe.sha256'}
     return {'version': tag, 'assets': assets}
 
 
@@ -93,13 +97,35 @@ def verify_checksum(path, checksum):
 def download_update(release):
     folder = Path(tempfile.mkdtemp(prefix='BillSplitter-update-'))
     target = folder / EXE_NAME
-    with fetch(release['assets'][CHECKSUM_NAME]) as response:
-        checksum = response.read(4096).decode('ascii')
-    with fetch(release['assets'][EXE_NAME]) as response, target.open('wb') as output:
-        while block := response.read(1024 * 1024):
-            output.write(block)
-    verify_checksum(target, checksum)
-    return target
+    assets = dict(release['assets'])
+    try:
+        try:
+            response = fetch(assets[CHECKSUM_NAME])
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+            # GitHub may sanitize Chinese asset names to wuli.exe on upload.
+            base = assets[CHECKSUM_NAME].rsplit('/', 1)[0]
+            expected = f'https://github.com/{GITHUB_REPOSITORY}/releases/download/'
+            if not base.startswith(expected):
+                raise ValueError('更新下载地址不属于本项目。') from error
+            assets = {EXE_NAME: base+'/wuli.exe', CHECKSUM_NAME: base+'/wuli.exe.sha256'}
+            response = fetch(assets[CHECKSUM_NAME])
+        with response:
+            checksum = response.read(4096).decode('ascii')
+        with fetch(assets[EXE_NAME]) as response, target.open('wb') as output:
+            while block := response.read(1024 * 1024):
+                output.write(block)
+        verify_checksum(target, checksum)
+        return target
+    except HTTPError as error:
+        shutil.rmtree(folder)
+        if error.code == 404:
+            raise ValueError('该版本缺少安装包或 SHA256 校验文件，请在 GitHub Releases 确认发布附件完整后重试。') from error
+        raise
+    except Exception:
+        shutil.rmtree(folder)
+        raise
 
 
 def install_update(download):
