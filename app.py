@@ -130,7 +130,7 @@ def main():
                     append(payload)
                 elif kind == 'delivery_done':
                     result_path.set(payload['directory'])
-                    append(f"完成：{payload['schools']} 所学校，{payload['sheets']} 张配送单，{payload['rows']} 条明细。\n结算总金额：{payload['total']} 元\n输出：{payload['directory']}")
+                    append(f"完成：{payload['schools']} 所学校，{payload['sheets']} 张配送单，{payload['rows']} 条明细。\n已排除米面油：{payload['excluded_rows']} 行\n结算总金额：{payload['total']} 元\n输出：{payload['directory']}")
                     button.configure(state='normal')
                     update_button.configure(state='normal')
                     messagebox.showinfo('配送单生成完成', '已按学校、日期、分类对象生成配送单，点击“打开生成文件夹”查看。')
@@ -198,7 +198,7 @@ def main():
             options.pack_forget()
             mode_description.configure(text='配送单生成  ·  每校一个文件，每日期与分类对象一张单  ·  本地处理')
             rule_label.configure(text='按“分类对象”分单；结算单价 = 销售单价 × 0.957。')
-            detail_label.configure(text='单价先四舍五入到分，再乘配送量；分类异常会提示源行号。')
+            detail_label.configure(text='排除米面油大类；单价及金额到分；续页不重复表头。')
             button.configure(text='生成全部学校配送单')
         else:
             options.pack(fill='x', pady=10, before=rule_label)

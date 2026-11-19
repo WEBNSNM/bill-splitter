@@ -7,3 +7,5 @@ outputs/
 build/
 dist/
 *.spec
+/tests/*
+/tools/*

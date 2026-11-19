@@ -93,12 +93,11 @@ def write_sheet(ws, school, day, obj, records):
     ws.sheet_view.showGridLines = False
     ws.freeze_panes = 'J5'
     ws.print_area = f'F1:O{end+2}'
-    ws.print_title_rows = '1:4'
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = 'portrait'
     ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 1
+    ws.page_setup.fitToHeight = 0
     return total
 
 
@@ -114,6 +113,7 @@ def export_delivery(source, output_dir, progress=None):
         source_stream.close()
         raise
     count = 0
+    excluded = 0
     try:
         ws = w.worksheets[0]
         rows = ws.iter_rows(values_only=True)
@@ -130,6 +130,10 @@ def export_delivery(source, output_dir, progress=None):
                 continue
             def get(label):
                 return values[indexes[label]] if label in indexes else None
+            category = str(get('品类') or '').split('>')[0].strip()
+            if category == '米面油':
+                excluded += 1
+                continue
             school = str(get('客户名') or '').strip()
             if school in ('合计', '总计', '总合计') and not get('配送日期'):
                 continue
@@ -145,7 +149,7 @@ def export_delivery(source, output_dir, progress=None):
                 order = int(order)
             order = str(order).strip()
             groups[school][day, obj].append(dict(order=order if order.startswith('CG-') else 'CG-'+order,
-                category=str(get('品类') or '').split('>')[0].strip(), name=get('商品名'),
+                category=category, name=get('商品名'),
                 unit=get('计量单位'), quantity=number(get('销售数量'), line, '销售数量'),
                 price=number(get('销售单价(元)'), line, '销售单价'), note=get('商品备注')))
             count += 1
@@ -153,7 +157,7 @@ def export_delivery(source, output_dir, progress=None):
         w.close()
         source_stream.close()
     if not count:
-        raise ValueError('源文件没有可生成的配送明细。')
+        raise ValueError(f'源文件没有可生成的配送明细（已排除米面油 {excluded} 行）。')
     directory = Path(output_dir).resolve() / ('配送单_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:8])
     directory.mkdir(parents=True)
     total = Decimal(0)
@@ -170,7 +174,7 @@ def export_delivery(source, output_dir, progress=None):
             book.close()
             if progress:
                 progress(f'已生成：{school}，{len(batches)} 张配送单')
-        result = dict(directory=str(directory), schools=len(groups), sheets=sheets, rows=count, total=str(total))
+        result = dict(directory=str(directory), schools=len(groups), sheets=sheets, rows=count, excluded_rows=excluded, total=str(total))
         (directory / '配送运行报告.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         return result
     except Exception:
