@@ -5,7 +5,9 @@ import shutil
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from math import ceil
 from pathlib import Path
+from unicodedata import east_asian_width
 from uuid import uuid4
 
 from openpyxl import Workbook, load_workbook
@@ -16,6 +18,13 @@ from .core import delivery_date, safe_text
 CENT = Decimal('0.01')
 DISCOUNT = Decimal('0.957')
 HEADERS = ['分组', '配送日期', '订单编号', '客户名', '分类对象', '序号', '品类', '商品名称', '单位', '配送量', '基准价', '折扣率', '结算单价', '结算金额', '备注']
+COLUMN_WIDTHS = {'G': 9.625, 'H': 34, 'I': 9, 'L': 9}
+
+
+def wrapped_lines(value, capacity):
+    return sum(max(1, ceil(sum(2 if east_asian_width(c) in ('W', 'F') else 1
+                              for c in line) / capacity))
+               for line in str(value or '').split('\n'))
 
 
 def number(value, line, label):
@@ -29,7 +38,7 @@ def number(value, line, label):
 
 
 def write_sheet(ws, school, day, obj, records):
-    orders = list(dict.fromkeys(r['order'] for r in records))
+    order = records[0]['order']
     ws.merge_cells('F1:O1')
     ws['F1'] = '成都鸿康农业科技开发有限公司（食材配送清单）'
     ws['F2'] = '客户：'
@@ -37,7 +46,7 @@ def write_sheet(ws, school, day, obj, records):
     ws['G2'] = '成都市金牛国投食材配送有限公司'
     ws['I2'] = '订单编号：'
     ws.merge_cells('J2:K2')
-    safe_text(ws['J2'], '、'.join(orders))
+    safe_text(ws['J2'], order)
     ws['L2'] = '配送日期：'
     ws.merge_cells('M2:O2')
     ws['M2'] = day.isoformat()
@@ -74,27 +83,31 @@ def write_sheet(ws, school, day, obj, records):
     edge = Side(style='thin', color='808080')
     for row in ws.iter_rows():
         for cell in row:
-            cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and cell.value == '面点豆制品' else 10.5)
+            cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and cell.row >= 5 else 10.5)
             cell.alignment = Alignment(horizontal='left' if cell.column == 8 else 'center', vertical='center', wrap_text=True)
-            if cell.column >= 6:
+            if cell.row >= 4 and cell.column >= 6:
                 cell.border = Border(left=edge, right=edge, top=edge, bottom=edge)
     ws['F1'].font = Font(name='微软雅黑', size=16, bold=True)
     for row in range(1, ws.max_row+1):
         ws.row_dimensions[row].height = 20
     ws.row_dimensions[1].height = 32
-    ws.row_dimensions[2].height = max(40, 20 * ((len('、'.join(orders)) + 13) // 14))
+    ws.row_dimensions[2].height = max(40, 20 * wrapped_lines(order, 14))
     ws.row_dimensions[3].height = max(40, 20 * ((len(school)+len(obj)+8+26)//27))
     ws.row_dimensions[4].height = 30
+    for row in range(5, end):
+        lines = max(wrapped_lines(ws[f'{col}{row}'].value, capacity)
+                    for col, capacity in (('G', 10), ('H', 30), ('I', 8), ('O', 6)))
+        ws.row_dimensions[row].height = 20 * lines
     for col in range(1, 16):
         letter = get_column_letter(col)
-        ws.column_dimensions[letter].width = 34 if col == 8 else 9 if col in (9, 12) else 8
+        ws.column_dimensions[letter].width = COLUMN_WIDTHS.get(letter, 8)
         if col <= 5:
             ws.column_dimensions[letter].hidden = True
     ws.sheet_view.showGridLines = False
     ws.freeze_panes = 'J5'
     ws.print_area = f'F1:O{end+2}'
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
     ws.page_setup.orientation = 'portrait'
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0

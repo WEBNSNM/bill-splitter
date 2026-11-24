@@ -46,9 +46,9 @@ class BillTests(unittest.TestCase):
             self.assertIn('9.30', html)
             self.assertEqual(result['exception_details'][0]['source_row'], 4)
             book = load_workbook(next(Path(result['directory']).glob('*学校A*.xlsx')), data_only=False)
-            self.assertEqual(book.sheetnames, ['全部明细', '总计表', '老师明细', '学生明细'])
-            self.assertEqual(book['全部明细'].max_row, 4)
-            self.assertEqual(book['总计表']['D2'].value, '=SUM(B2:C2)')
+            self.assertEqual(book.sheetnames, ['底稿', '学校A对账单', '老师明细', '学生明细'])
+            self.assertEqual(book['底稿'].max_row, 4)
+            self.assertEqual(book['学校A对账单']['D2'].value, '=SUM(B2:C2)')
             self.assertEqual(book['老师明细'].max_row, 2)
             self.assertEqual(book['学生明细'].max_row, 2)
             for sheet in book:
@@ -93,12 +93,12 @@ class BillTests(unittest.TestCase):
                     self.assertNotIn('序号', [c.value for c in sheet[1]])
                     for row in range(1, sheet.max_row + 1):
                         self.assertEqual(sheet.row_dimensions[row].height, 17.25)
-                self.assertEqual(book['全部明细']['E2'].value, 1.01 if school['school'] == 'A' else 7)
+                self.assertEqual(book['底稿']['E2'].value, 1.01 if school['school'] == 'A' else 7)
                 self.assertEqual(book['老师明细'].max_row, 2 if school['school'] == 'A' else 1)
                 if school['school'] == 'A':
                     self.assertEqual(book['老师明细']['C2'].value, '老师')
                     self.assertEqual(book['活动单明细']['E2'].value, 3)
-                    summary = book['总计表']
+                    summary = book['A对账单']
                     self.assertEqual([c.value for c in summary[1]], ['配送日期', '老师', '学生', '活动单', '总计'])
                     self.assertEqual(summary['E2'].value, '=SUM(B2:D2)')
                     self.assertEqual(summary['D3'].value, 3)
@@ -132,8 +132,8 @@ class BillTests(unittest.TestCase):
             self.assertEqual(len(book.sheetnames), 4)
             self.assertEqual(book['学生明细'].max_row, 3)
             self.assertEqual(book['老师明细']['E2'].value, 2)
-            self.assertEqual(book['总计表']['B2'].value, 2)
-            self.assertEqual(book['总计表']['C2'].value, 4)
+            self.assertEqual(book['A对账单']['B2'].value, 2)
+            self.assertEqual(book['A对账单']['C2'].value, 4)
             book.close()
 
     def test_serial_column_in_middle_keeps_date_amount_mapping(self):
@@ -147,9 +147,9 @@ class BillTests(unittest.TestCase):
             wb.close()
             result = export_bills(src, root / 'out', '下单金额(元)')
             book = load_workbook(next(Path(result['directory']).glob('*.xlsx')))
-            self.assertEqual(book['全部明细'].max_column, 4)
-            self.assertEqual(book['全部明细']['D2'].value, 2.35)
-            self.assertEqual(book['全部明细']['B2'].number_format, 'yyyy-mm-dd')
+            self.assertEqual(book['底稿'].max_column, 4)
+            self.assertEqual(book['底稿']['D2'].value, 2.35)
+            self.assertEqual(book['底稿']['B2'].number_format, 'yyyy-mm-dd')
             book.close()
 
     def test_invalid_amount_and_date_are_rejected(self):

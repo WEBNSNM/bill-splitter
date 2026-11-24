@@ -8,15 +8,15 @@ from tkinter import filedialog, messagebox, ttk
 
 from bill_splitter.core import export_bills
 from bill_splitter.delivery import export_delivery
-from bill_splitter.version import VERSION
+from bill_splitter.version import APP_NAME, VERSION
 from bill_splitter.updater import check_update, download_update, install_update
 import sys
 
 
 def main():
     root = tk.Tk()
-    root.iconbitmap(str(Path(__file__).resolve().parent / 'assets' / 'juan.ico'))
-    root.title('wuli娟娟 v' + VERSION)
+    root.iconbitmap(str(Path(__file__).resolve().parent / 'assets' / 'checklist.ico'))
+    root.title(f'{APP_NAME} v{VERSION}')
     root.geometry('900x650')
     root.minsize(780, 600)
     root.configure(background='#fff3f7')
@@ -35,14 +35,14 @@ def main():
     style.map('TCombobox', fieldbackground=[('readonly', 'white')], selectbackground=[('readonly', '#f6dce7')], selectforeground=[('readonly', '#503c46')])
     home = ttk.Frame(root, padding=40)
     home.pack(fill='both', expand=True)
-    ttk.Label(home, text='wuli娟娟', style='Title.TLabel').pack(anchor='w', pady=(30, 10))
+    ttk.Label(home, text=APP_NAME, style='Title.TLabel').pack(anchor='w', pady=(30, 10))
     ttk.Label(home, text='今天想整理什么？选择一个功能开始吧。').pack(anchor='w', pady=(0, 30))
     mode = tk.StringVar(value='bill')
     panel = ttk.Frame(root, padding=24)
     panel.pack(fill='both', expand=True)
     heading = ttk.Frame(panel)
     heading.pack(fill='x')
-    ttk.Label(heading, text='wuli娟娟', style='Title.TLabel').pack(side='left')
+    ttk.Label(heading, text=APP_NAME, style='Title.TLabel').pack(side='left')
     update_button = ttk.Button(heading, text='v' + VERSION + ' · 检查更新')
     update_button.pack(side='right')
     ttk.Label(panel, text='把繁琐的账单，整理得明明白白。', style='Subtitle.TLabel').pack(anchor='w', pady=(5, 4))
@@ -166,7 +166,7 @@ def main():
                         button.configure(state='normal')
                         update_button.configure(state='normal')
                         os.startfile(str(payload.parent))
-                        messagebox.showinfo('下载完成', '当前为源码运行模式。已打开下载目录，请运行其中的 wuli娟娟.exe。')
+                        messagebox.showinfo('下载完成', f'已打开下载目录，请运行其中的 {payload.name}。')
                 else:
                     append('失败：' + payload)
                     button.configure(state='normal')
@@ -217,7 +217,7 @@ def main():
     ttk.Button(home, text='配送单生成 · 按日期与对象制作配送单', style='Primary.TButton', command=lambda: choose_mode('delivery')).pack(fill='x', pady=12, ipady=12)
     ttk.Label(home, text='所有账单均在本机处理，源文件保持原样。', style='Subtitle.TLabel').pack(anchor='w', pady=24)
     panel.pack_forget()
-    append('欢迎使用 wuli娟娟。选好账单和保存位置，就可以开始整理啦。')
+    append(f'欢迎使用 {APP_NAME}。选好账单和保存位置，就可以开始整理啦。')
     root.after(150, poll)
     root.mainloop()
 

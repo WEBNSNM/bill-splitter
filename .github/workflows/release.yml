@@ -28,7 +28,7 @@ jobs:
           sys.path.insert(0, os.environ["GITHUB_WORKSPACE"])
           from bill_splitter.version import VERSION
           assert os.environ['GITHUB_REF_NAME'] == 'v' + VERSION, 'Tag must match VERSION'
-      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli --icon assets/juan.ico --add-data "assets/juan.ico;assets" app.py
+      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli --icon assets/checklist.ico --add-data "assets/checklist.ico;assets" app.py
       - name: Checksum
         shell: pwsh
         run: |

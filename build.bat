@@ -4,7 +4,7 @@ cd /d "%~dp0"
 if errorlevel 1 goto failed
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 if errorlevel 1 goto failed
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli --icon assets/juan.ico --add-data "assets/juan.ico;assets" app.py
+.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name wuli --icon assets/checklist.ico --add-data "assets/checklist.ico;assets" app.py
 if errorlevel 1 goto failed
 echo EXE: %cd%\dist\wuli.exe
 pause

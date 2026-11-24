@@ -68,16 +68,18 @@ def safe_text(cell, value):
 def style_sheet(ws):
     edge = Side(style='thin', color='808080')
     border = Border(left=edge, right=edge, top=edge, bottom=edge)
+    body_alignment = Alignment(horizontal='center')
     for row in ws.iter_rows():
         for cell in row:
             cell.border = border
+            cell.alignment = body_alignment
     ws.freeze_panes = 'A2'
     ws.auto_filter.ref = ws.dimensions
     ws.sheet_view.showGridLines = False
     for cell in ws[1]:
         cell.font = Font(name='微软雅黑', bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor='234E70')
-        cell.alignment = Alignment(vertical='center', wrap_text=True)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
     ws.sheet_format.defaultRowHeight = 17.25
     for row in range(1, ws.max_row + 1):
         ws.row_dimensions[row].height = 17.25
@@ -188,8 +190,11 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
         for index, (school, records) in enumerate(groups.items(), 1):
             out = Workbook()
             detail = out.active
-            detail.title = '全部明细'
-            summary = out.create_sheet('总计表')
+            detail.title = '底稿'
+            suffix = '对账单'
+            sheet_school = re.sub(r'[\\/*?:\[\]\x00-\x1f]', '_', school)
+            summary_title = (sheet_school[:31 - len(suffix)] + suffix).lstrip("'")
+            summary = out.create_sheet(summary_title)
             teacher = out.create_sheet('老师明细')
             student = out.create_sheet('学生明细')
             categories = ['老师', '学生'] + (['活动单'] if any(r['category'] == '活动单' for r in records) else [])
@@ -251,7 +256,7 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                       exception_details=[dict(source_row=r[0], source_sheet=source_sheet, school=r[1],
                                               address=r[2], date=r[3], amount=r[4], reason=r[5],
                                               object_name=r[6], classification_field=r[7]) for r in exceptions],
-                      note='有对象名称列时严格按其值分类（教师/老师、学生、活动单），仅缺少该列时按收货地址分类；每校有已分类活动单时增加活动单明细和汇总列；待核对记录保留在全部明细。空客户名仅在待核对清单。金额按每行四舍五入到分。')
+                      note='有对象名称列时严格按其值分类（教师/老师、学生、活动单），仅缺少该列时按收货地址分类；每校有已分类活动单时增加活动单明细和汇总列；待核对记录保留在底稿。空客户名仅在待核对清单。金额按每行四舍五入到分。')
         (run_dir / '运行报告.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         write_report(result)
         return result

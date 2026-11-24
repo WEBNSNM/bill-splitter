@@ -1,2 +1,3 @@
+APP_NAME = '案甚财务'
 VERSION = '0.3.8'
 GITHUB_REPOSITORY = 'WEBNSNM/bill-splitter'
