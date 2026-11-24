@@ -88,7 +88,7 @@ def write_sheet(ws, school, day, obj, records):
         for cell in row:
             cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and 5 <= cell.row < end else 10.5,
                              bold=cell.row == 4)
-            cell.alignment = header if cell.row in (2, 3) else centered
+            cell.alignment = header if cell.row in (2, 3, end, end + 1) else centered
             if 4 <= cell.row <= end + 1 and cell.column >= 6:
                 cell.border = border
     ws['F1'].font = Font(name='微软雅黑', size=19.5, bold=True)
@@ -96,8 +96,8 @@ def write_sheet(ws, school, day, obj, records):
         ws[address].alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
     for address in ('J2', 'M2'):
         ws[address].font = Font(name='微软雅黑', size=9)
-    for col in (6, 11):
-        ws.cell(signature_row, col).alignment = Alignment(horizontal='center', vertical='top')
+    ws.cell(signature_row, 6).alignment = Alignment(horizontal='center', vertical='top')
+    ws.cell(signature_row, 11).alignment = Alignment(horizontal='left', vertical='top')
     for row in range(1, ws.max_row+1):
         ws.row_dimensions[row].height = 20
     ws.row_dimensions[1].height = 32

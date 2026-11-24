@@ -68,6 +68,10 @@ class DeliveryTests(unittest.TestCase):
             self.assertEqual(s['F4'].border.top.color.rgb, '00595959')
             self.assertEqual(s.cell(s.max_row, 6).value, '送货人：')
             self.assertEqual(s.cell(s.max_row, 11).value, '收货人：')
+            self.assertEqual(s.cell(s.max_row, 11).alignment.horizontal, 'left')
+            for row in (s.max_row - 2, s.max_row - 1):
+                for col in (6, 8):
+                    self.assertEqual(s.cell(row, col).alignment.horizontal, 'left')
             self.assertGreaterEqual(s.row_dimensions[s.max_row].height, 75)
             for cell in s[s.max_row][5:15]:
                 border = cell.border
