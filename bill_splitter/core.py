@@ -146,27 +146,17 @@ def write_summary(ws, categories, daily, *, formulas=True):
         cell.fill = PatternFill('solid', fgColor='DDEBF7')
 
 
-def write_guotou(path, headers, records, amount_index, date_index):
-    book = Workbook()
-    try:
-        detail = book.active
-        detail.title = '底稿'
-        summary = book.create_sheet('鸿康-国投折扣后(95.7%)对账单')
-        book.active = summary
-        detail.sheet_state = 'hidden'
-        write_details(detail, headers, records, amount_index, date_index)
-        categories = ('老师', '学生')
-        daily = defaultdict(lambda: dict.fromkeys(categories, Decimal(0)))
-        for category, title in zip(categories, ('鸿康-国投教师', '鸿康-国投学生')):
-            rows = [r for r in records if r['category'] == category and 'settlement' in r]
-            write_details(book.create_sheet(title), [*headers, *GUOTOU_HEADERS], rows,
-                          amount_index, date_index, discounted=True)
-            for record in rows:
-                daily[record['date']][category] += record['settlement'][1]
-        write_summary(summary, categories, daily, formulas=False)
-        book.save(path)
-    finally:
-        book.close()
+def append_guotou_sheets(book, headers, records, amount_index, date_index):
+    summary = book.create_sheet('鸿康-国投折扣后(95.7%)对账单')
+    categories = ('老师', '学生')
+    daily = defaultdict(lambda: dict.fromkeys(categories, Decimal(0)))
+    for category, title in zip(categories, ('鸿康-国投教师', '鸿康-国投学生')):
+        rows = [r for r in records if r['category'] == category and 'settlement' in r]
+        write_details(book.create_sheet(title), [*headers, *GUOTOU_HEADERS], rows,
+                      amount_index, date_index, discounted=True)
+        for record in rows:
+            daily[record['date']][category] += record['settlement'][1]
+    write_summary(summary, categories, daily, formulas=False)
 
 
 def export_bills(source, output_dir, amount_column='销售金额(元)', progress=None, *, include_guotou=False):
@@ -305,14 +295,15 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
             filename = f'{index:02d}_{safe_name}_{start:%Y.%m.%d}-{end:%Y.%m.%d}对账明细.xlsx'
             school_file = f'学校版/{filename}'
             out.save(run_dir / school_file)
-            out.close()
             report = dict(school=school, rows=len(records), file=school_file,
                           total=str(sum((r['amount'] for r in records), Decimal(0))),
                           pending_rows=sum(r['category'] == '待核对' for r in records))
             if include_guotou:
                 guotou_file = f'国投版/国投_{filename}'
-                write_guotou(run_dir / guotou_file, output_headers, records, output_mi, output_di)
+                append_guotou_sheets(out, output_headers, records, output_mi, output_di)
+                out.save(run_dir / guotou_file)
                 report['guotou_file'] = guotou_file
+            out.close()
             school_reports.append(report)
             if progress:
                 progress(f'已生成 {index}/{len(groups)}：{school}')

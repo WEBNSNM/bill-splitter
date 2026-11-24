@@ -22,6 +22,17 @@ def main():
     root.configure(background='#fff3f7')
     style = ttk.Style(root)
     style.theme_use('clam')
+    style.element_create('Guotou.Checkbutton.indicator', 'from', 'vista', 'Checkbutton.indicator')
+    style.layout('Guotou.TCheckbutton', [
+        ('Checkbutton.padding', {'sticky': 'nswe', 'children': [
+            ('Guotou.Checkbutton.indicator', {'side': 'left'}),
+            ('Checkbutton.focus', {'side': 'left', 'sticky': 'w', 'children': [
+                ('Checkbutton.label', {'sticky': 'nswe'}),
+            ]}),
+        ]}),
+    ])
+    style.configure('Guotou.TCheckbutton', background='#fff3f7', foreground='#624653',
+                    font=('Microsoft YaHei UI', 10))
     style.configure('TFrame', background='#fff3f7')
     style.configure('TLabel', font=('Microsoft YaHei UI', 11), background='#fff3f7', foreground='#624653')
     style.configure('Title.TLabel', background='#fff3f7', foreground='#b23b70', font=('Microsoft YaHei UI', 28, 'bold'))
@@ -67,7 +78,8 @@ def main():
     options.pack(fill='x', pady=10)
     ttk.Label(options, text='③ 金额口径', width=10).pack(side='left')
     ttk.Combobox(options, textvariable=amount, values=['销售金额(元)', '下单金额(元)'], state='readonly').pack(side='left')
-    ttk.Checkbutton(options, text='同时生成国投对账单（95.7%）', variable=include_guotou).pack(side='left', padx=16)
+    ttk.Checkbutton(options, text='同时生成国投对账单（95.7%）', variable=include_guotou,
+                    style='Guotou.TCheckbutton').pack(side='left', padx=16)
     rule_label = ttk.Label(panel)
     rule_label.pack(anchor='w', pady=5)
     detail_label = ttk.Label(panel, style='Subtitle.TLabel')
