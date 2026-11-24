@@ -47,6 +47,11 @@ class DeliveryTests(unittest.TestCase):
                     for side in (cell.border.left, cell.border.right, cell.border.top, cell.border.bottom):
                         self.assertIsNone(side and side.style)
             self.assertEqual(s['F4'].border.top.style, 'thin')
+            for cell in s[s.max_row][5:15]:
+                border = cell.border
+                for side in (border.left, border.right, border.top, border.bottom):
+                    self.assertIsNone(side and side.style)
+            self.assertEqual(s.cell(s.max_row - 1, 6).border.bottom.style, 'thin')
             self.assertEqual(s.page_setup.paperSize, int(s.PAPERSIZE_LETTER))
             self.assertEqual(s.page_setup.orientation, 'portrait')
             self.assertTrue(s.sheet_properties.pageSetUpPr.fitToPage)

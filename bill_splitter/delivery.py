@@ -85,7 +85,7 @@ def write_sheet(ws, school, day, obj, records):
         for cell in row:
             cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and cell.row >= 5 else 10.5)
             cell.alignment = Alignment(horizontal='left' if cell.column == 8 else 'center', vertical='center', wrap_text=True)
-            if cell.row >= 4 and cell.column >= 6:
+            if 4 <= cell.row <= end + 1 and cell.column >= 6:
                 cell.border = Border(left=edge, right=edge, top=edge, bottom=edge)
     ws['F1'].font = Font(name='微软雅黑', size=16, bold=True)
     for row in range(1, ws.max_row+1):
