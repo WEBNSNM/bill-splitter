@@ -84,7 +84,7 @@ def write_sheet(ws, school, day, obj, records):
     ws.merge_cells(start_row=signature_row, start_column=11, end_row=signature_row, end_column=15)
     ws.cell(signature_row, 6, '送货人：')
     ws.cell(signature_row, 11, '收货人：')
-    edge = Side(style='medium', color='404040')
+    edge = Side(style='thin', color='595959')
     border = Border(left=edge, right=edge, top=edge, bottom=edge)
     centered = Alignment(horizontal='center', vertical='center', wrap_text=True)
     header = Alignment(horizontal='left', vertical='center', wrap_text=True)
@@ -96,7 +96,7 @@ def write_sheet(ws, school, day, obj, records):
             if 4 <= cell.row <= end + 1 and cell.column >= 6:
                 cell.border = border
     ws['F1'].font = Font(name='微软雅黑', size=19.5, bold=True)
-    for address in ('I2', 'J2', 'L2', 'M2'):
+    for address in ('I2', 'J2', 'L2', 'M2', 'F3'):
         ws[address].alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
     for address in ('J2', 'M2'):
         ws[address].font = Font(name='微软雅黑', size=9)
@@ -105,8 +105,8 @@ def write_sheet(ws, school, day, obj, records):
     for row in range(1, ws.max_row+1):
         ws.row_dimensions[row].height = 20
     ws.row_dimensions[1].height = 32
-    ws.row_dimensions[2].height = 40
-    ws.row_dimensions[3].height = max(40, 20 * ((len(school)+len(obj)+8+26)//27))
+    ws.row_dimensions[2].height = 22
+    ws.row_dimensions[3].height = 22
     ws.row_dimensions[4].height = 30
     ws.row_dimensions[signature_row].height = 100
     for row in range(5, end):

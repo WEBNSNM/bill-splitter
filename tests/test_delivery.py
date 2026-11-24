@@ -56,13 +56,16 @@ class DeliveryTests(unittest.TestCase):
             for margin in ('left', 'right'):
                 self.assertAlmostEqual(getattr(s.page_margins, margin) * 2.54, 1.5)
             self.assertEqual(s.row_dimensions[5].height, 20)
+            self.assertEqual(s.row_dimensions[2].height, 22)
+            self.assertEqual(s.row_dimensions[3].height, 22)
             self.assertEqual(s['G5'].font.sz, 9)
             self.assertTrue(s['G5'].alignment.wrap_text)
             for row in s.iter_rows(min_row=1, max_row=3, min_col=6, max_col=15):
                 for cell in row:
                     for side in (cell.border.left, cell.border.right, cell.border.top, cell.border.bottom):
                         self.assertIsNone(side and side.style)
-            self.assertEqual(s['F4'].border.top.style, 'medium')
+            self.assertEqual(s['F4'].border.top.style, 'thin')
+            self.assertEqual(s['F4'].border.top.color.rgb, '00595959')
             self.assertEqual(s.cell(s.max_row, 6).value, '送货人：')
             self.assertEqual(s.cell(s.max_row, 11).value, '收货人：')
             self.assertGreaterEqual(s.row_dimensions[s.max_row].height, 75)
@@ -70,7 +73,7 @@ class DeliveryTests(unittest.TestCase):
                 border = cell.border
                 for side in (border.left, border.right, border.top, border.bottom):
                     self.assertIsNone(side and side.style)
-            self.assertEqual(s.cell(s.max_row - 1, 6).border.bottom.style, 'medium')
+            self.assertEqual(s.cell(s.max_row - 1, 6).border.bottom.style, 'thin')
             self.assertEqual(s.page_setup.paperSize, int(s.PAPERSIZE_LETTER))
             self.assertEqual(s.page_setup.orientation, 'portrait')
             self.assertTrue(s.sheet_properties.pageSetUpPr.fitToPage)
