@@ -38,7 +38,23 @@ class DeliveryTests(unittest.TestCase):
             self.assertEqual(s['N5'].value, 2.88)
             self.assertTrue(s.column_dimensions['A'].hidden)
             self.assertEqual(s.column_dimensions['G'].width, 9.625)
-            self.assertEqual(s.column_dimensions['H'].width, 34)
+            self.assertEqual(s.column_dimensions['H'].width, 34.625)
+            for col in ('M', 'N'):
+                self.assertEqual(s.column_dimensions[col].width, 9.625)
+            self.assertEqual(s['F1'].font.sz, 19.5)
+            for cell in (*s[4], *s[5]):
+                self.assertEqual(cell.alignment.horizontal, 'center')
+            self.assertTrue(all(cell.font.bold for cell in s[4]))
+            for address in ('F2', 'G2', 'I2', 'J2', 'L2', 'M2', 'F3', 'I3', 'L3'):
+                self.assertEqual(s[address].alignment.horizontal, 'left')
+            for address in ('I2', 'J2', 'L2', 'M2'):
+                self.assertFalse(s[address].alignment.wrap_text)
+            self.assertEqual(s['J2'].font.sz, 9)
+            self.assertEqual(s['M2'].font.sz, 9)
+            for margin in ('top', 'bottom'):
+                self.assertAlmostEqual(getattr(s.page_margins, margin) * 2.54, 1)
+            for margin in ('left', 'right'):
+                self.assertAlmostEqual(getattr(s.page_margins, margin) * 2.54, 1.5)
             self.assertEqual(s.row_dimensions[5].height, 20)
             self.assertEqual(s['G5'].font.sz, 9)
             self.assertTrue(s['G5'].alignment.wrap_text)
@@ -46,12 +62,15 @@ class DeliveryTests(unittest.TestCase):
                 for cell in row:
                     for side in (cell.border.left, cell.border.right, cell.border.top, cell.border.bottom):
                         self.assertIsNone(side and side.style)
-            self.assertEqual(s['F4'].border.top.style, 'thin')
+            self.assertEqual(s['F4'].border.top.style, 'medium')
+            self.assertEqual(s.cell(s.max_row, 6).value, '送货人：')
+            self.assertEqual(s.cell(s.max_row, 11).value, '收货人：')
+            self.assertGreaterEqual(s.row_dimensions[s.max_row].height, 75)
             for cell in s[s.max_row][5:15]:
                 border = cell.border
                 for side in (border.left, border.right, border.top, border.bottom):
                     self.assertIsNone(side and side.style)
-            self.assertEqual(s.cell(s.max_row - 1, 6).border.bottom.style, 'thin')
+            self.assertEqual(s.cell(s.max_row - 1, 6).border.bottom.style, 'medium')
             self.assertEqual(s.page_setup.paperSize, int(s.PAPERSIZE_LETTER))
             self.assertEqual(s.page_setup.orientation, 'portrait')
             self.assertTrue(s.sheet_properties.pageSetUpPr.fitToPage)

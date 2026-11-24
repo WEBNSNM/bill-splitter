@@ -18,7 +18,8 @@ from .core import delivery_date, safe_text
 CENT = Decimal('0.01')
 DISCOUNT = Decimal('0.957')
 HEADERS = ['分组', '配送日期', '订单编号', '客户名', '分类对象', '序号', '品类', '商品名称', '单位', '配送量', '基准价', '折扣率', '结算单价', '结算金额', '备注']
-COLUMN_WIDTHS = {'G': 9.625, 'H': 34, 'I': 9, 'L': 9}
+# Excel's column-width dialog excludes the padding stored in the workbook.
+COLUMN_WIDTHS = {'G': 9.625, 'H': 34.625, 'I': 12, 'L': 12, 'M': 9.625, 'N': 9.625}
 
 
 def wrapped_lines(value, capacity):
@@ -78,25 +79,39 @@ def write_sheet(ws, school, day, obj, records):
         ws.cell(row, 6, label)
         ws.merge_cells(start_row=row, start_column=8, end_row=row, end_column=15)
         ws.cell(row, 8, float(total)).number_format = '0.00'
-    ws.merge_cells(start_row=end+2, start_column=6, end_row=end+2, end_column=15)
-    ws.cell(end+2, 6, '送货人：                                      收货人：')
-    edge = Side(style='thin', color='808080')
+    signature_row = end + 2
+    ws.merge_cells(start_row=signature_row, start_column=6, end_row=signature_row, end_column=8)
+    ws.merge_cells(start_row=signature_row, start_column=11, end_row=signature_row, end_column=15)
+    ws.cell(signature_row, 6, '送货人：')
+    ws.cell(signature_row, 11, '收货人：')
+    edge = Side(style='medium', color='404040')
+    border = Border(left=edge, right=edge, top=edge, bottom=edge)
+    centered = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    header = Alignment(horizontal='left', vertical='center', wrap_text=True)
     for row in ws.iter_rows():
         for cell in row:
-            cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and cell.row >= 5 else 10.5)
-            cell.alignment = Alignment(horizontal='left' if cell.column == 8 else 'center', vertical='center', wrap_text=True)
+            cell.font = Font(name='微软雅黑', size=9 if cell.column == 7 and 5 <= cell.row < end else 10.5,
+                             bold=cell.row == 4)
+            cell.alignment = header if cell.row in (2, 3) else centered
             if 4 <= cell.row <= end + 1 and cell.column >= 6:
-                cell.border = Border(left=edge, right=edge, top=edge, bottom=edge)
-    ws['F1'].font = Font(name='微软雅黑', size=16, bold=True)
+                cell.border = border
+    ws['F1'].font = Font(name='微软雅黑', size=19.5, bold=True)
+    for address in ('I2', 'J2', 'L2', 'M2'):
+        ws[address].alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
+    for address in ('J2', 'M2'):
+        ws[address].font = Font(name='微软雅黑', size=9)
+    for col in (6, 11):
+        ws.cell(signature_row, col).alignment = Alignment(horizontal='center', vertical='top')
     for row in range(1, ws.max_row+1):
         ws.row_dimensions[row].height = 20
     ws.row_dimensions[1].height = 32
-    ws.row_dimensions[2].height = max(40, 20 * wrapped_lines(order, 14))
+    ws.row_dimensions[2].height = 40
     ws.row_dimensions[3].height = max(40, 20 * ((len(school)+len(obj)+8+26)//27))
     ws.row_dimensions[4].height = 30
+    ws.row_dimensions[signature_row].height = 100
     for row in range(5, end):
         lines = max(wrapped_lines(ws[f'{col}{row}'].value, capacity)
-                    for col, capacity in (('G', 10), ('H', 30), ('I', 8), ('O', 6)))
+                    for col, capacity in (('G', 10), ('H', 30), ('I', 10), ('O', 6)))
         ws.row_dimensions[row].height = 20 * lines
     for col in range(1, 16):
         letter = get_column_letter(col)
@@ -105,7 +120,9 @@ def write_sheet(ws, school, day, obj, records):
             ws.column_dimensions[letter].hidden = True
     ws.sheet_view.showGridLines = False
     ws.freeze_panes = 'J5'
-    ws.print_area = f'F1:O{end+2}'
+    ws.print_area = f'F1:O{signature_row}'
+    ws.page_margins.top = ws.page_margins.bottom = 1 / 2.54
+    ws.page_margins.left = ws.page_margins.right = 1.5 / 2.54
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
     ws.page_setup.orientation = 'portrait'
