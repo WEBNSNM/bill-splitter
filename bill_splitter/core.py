@@ -18,6 +18,17 @@ from .report import write_report
 TEACHER = ('教师', '成人', '职工', '老师')
 STUDENT = ('幼儿', '学生')
 CENT = Decimal('0.01')
+DISCOUNT = Decimal('0.957')
+GUOTOU_HEADERS = ('销售价国投结算单价', '销售国投结算金额')
+
+
+def product_category(value):
+    return str(value or '').split('>')[0].strip()
+
+
+def settlement(price, quantity):
+    unit = (price * DISCOUNT).quantize(CENT, rounding=ROUND_HALF_UP)
+    return unit, (unit * quantity).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def classify(address):
@@ -94,7 +105,7 @@ def style_sheet(ws):
     ws.print_title_rows = '1:1'
 
 
-def write_details(ws, headers, records, amount_index, date_index):
+def write_details(ws, headers, records, amount_index, date_index, *, discounted=False):
     ws.append(headers)
     for record in records:
         r = ws.max_row + 1
@@ -102,10 +113,63 @@ def write_details(ws, headers, records, amount_index, date_index):
             safe_text(ws.cell(r, c), value)
         ws.cell(r, amount_index + 1, float(record['amount'])).number_format = '#,##0.00'
         ws.cell(r, date_index + 1, record['date']).number_format = 'yyyy-mm-dd'
+        if discounted:
+            for column, value in enumerate(record['settlement'], len(headers) - 1):
+                ws.cell(r, column, float(value)).number_format = '#,##0.00'
     style_sheet(ws)
 
 
-def export_bills(source, output_dir, amount_column='销售金额(元)', progress=None):
+def write_summary(ws, categories, daily, *, formulas=True):
+    ws.append(['配送日期', *categories, '总计'])
+    last_category = get_column_letter(len(categories) + 1)
+    total_column = len(categories) + 2
+    totals = [Decimal(0)] * len(categories)
+    for day, amounts in sorted(daily.items()):
+        row = ws.max_row + 1
+        amounts = [amounts[name] for name in categories]
+        totals = [total + amount for total, amount in zip(totals, amounts)]
+        total = f'=SUM(B{row}:{last_category}{row})' if formulas else float(sum(amounts))
+        ws.append([day, *map(float, amounts), total])
+        ws.cell(row, 1).number_format = 'yyyy-mm-dd'
+    last = ws.max_row
+    if formulas:
+        ws.append(['合计', *[f'=SUM({get_column_letter(c)}2:{get_column_letter(c)}{last})'
+                             for c in range(2, total_column + 1)]])
+    else:
+        ws.append(['合计', *map(float, totals), float(sum(totals))])
+    for cells in ws.iter_rows(min_row=2, min_col=2, max_col=total_column):
+        for cell in cells:
+            cell.number_format = '#,##0.00'
+    style_sheet(ws)
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill('solid', fgColor='DDEBF7')
+
+
+def write_guotou(path, headers, records, amount_index, date_index):
+    book = Workbook()
+    try:
+        detail = book.active
+        detail.title = '底稿'
+        summary = book.create_sheet('鸿康-国投折扣后(95.7%)对账单')
+        book.active = summary
+        detail.sheet_state = 'hidden'
+        write_details(detail, headers, records, amount_index, date_index)
+        categories = ('老师', '学生')
+        daily = defaultdict(lambda: dict.fromkeys(categories, Decimal(0)))
+        for category, title in zip(categories, ('鸿康-国投教师', '鸿康-国投学生')):
+            rows = [r for r in records if r['category'] == category and 'settlement' in r]
+            write_details(book.create_sheet(title), [*headers, *GUOTOU_HEADERS], rows,
+                          amount_index, date_index, discounted=True)
+            for record in rows:
+                daily[record['date']][category] += record['settlement'][1]
+        write_summary(summary, categories, daily, formulas=False)
+        book.save(path)
+    finally:
+        book.close()
+
+
+def export_bills(source, output_dir, amount_column='销售金额(元)', progress=None, *, include_guotou=False):
     source = Path(source).resolve()
     if source.suffix.lower() != '.xlsx':
         raise ValueError('仅支持 .xlsx 文件；请先在 Excel 中将 .xls 另存为 .xlsx。')
@@ -119,7 +183,7 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
         ws = wb.worksheets[0]
         source_sheet = ws.title
         iterator = ws.iter_rows(values_only=True)
-        headers = [str(v or '').strip() for v in next(iterator)]
+        headers = [str(v or '').strip() for v in next(iterator, ())]
         required = ['客户名', '收货地址', '配送日期', amount_column]
         for label in required:
             if headers.count(label) != 1:
@@ -131,6 +195,12 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
         output_indexes = [i for i, label in enumerate(headers) if label != '序号']
         output_headers = [headers[i] for i in output_indexes]
         output_mi, output_di = output_indexes.index(mi), output_indexes.index(di)
+        if include_guotou:
+            settlement_labels = ('品类', '销售单价(元)', '销售数量')
+            for label in settlement_labels:
+                if headers.count(label) != 1:
+                    raise ValueError(f'生成国投版时，第一行须有唯一表头“{label}”。')
+            product_index, price_index, quantity_index = map(output_headers.index, settlement_labels)
         for line, values in enumerate(iterator, 2):
             if all(v is None or v == '' for v in values):
                 continue
@@ -171,6 +241,17 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                                   else '未命中任何分类关键词')
                 record['category'] = category
                 record['use_object'] = use_object
+                if include_guotou and category in ('老师', '学生'):
+                    values = record['values']
+                    if product_category(values[product_index]) != '米面油':
+                        try:
+                            price = Decimal(str(values[price_index]).replace(',', '').strip())
+                            quantity = Decimal(str(values[quantity_index]).replace(',', '').strip())
+                            if not price.is_finite() or not quantity.is_finite():
+                                raise InvalidOperation
+                            record['settlement'] = settlement(price, quantity)
+                        except InvalidOperation:
+                            raise ValueError(f"第 {record['source_row']} 行国投版的销售单价或销售数量无效。") from None
                 if reason:
                     pending += record['amount']
                     exceptions.append([record['source_row'], record['school'], record['address'],
@@ -186,6 +267,9 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
     run_dir = parent / (datetime.now().strftime('账单_%Y%m%d_%H%M%S_') + uuid4().hex[:8])
     run_dir.mkdir()  # 每次独立目录，失败则删除本次不完整输出。
     try:
+        (run_dir / '学校版').mkdir()
+        if include_guotou:
+            (run_dir / '国投版').mkdir()
         school_reports = []
         for index, (school, records) in enumerate(groups.items(), 1):
             out = Workbook()
@@ -195,6 +279,8 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
             sheet_school = re.sub(r'[\\/*?:\[\]\x00-\x1f]', '_', school)
             summary_title = (sheet_school[:31 - len(suffix)] + suffix).lstrip("'")
             summary = out.create_sheet(summary_title)
+            out.active = summary
+            detail.sheet_state = 'hidden'
             teacher = out.create_sheet('老师明细')
             student = out.create_sheet('学生明细')
             categories = ['老师', '学生'] + (['活动单'] if any(r['category'] == '活动单' for r in records) else [])
@@ -211,34 +297,23 @@ def export_bills(source, output_dir, amount_column='销售金额(元)', progress
                 amounts = daily[r['date']]
                 if r['category'] in categories:
                     amounts[r['category']] += r['amount']
-            summary.append(['配送日期', *categories, '总计'])
-            last_category = get_column_letter(len(categories) + 1)
-            total_column = len(categories) + 2
-            for day, amounts in sorted(daily.items()):
-                row = summary.max_row + 1
-                summary.append([day, *[float(amounts[name]) for name in categories],
-                                f'=SUM(B{row}:{last_category}{row})'])
-                summary.cell(row, 1).number_format = 'yyyy-mm-dd'
-            last = summary.max_row
-            summary.append(['合计', *[f'=SUM({get_column_letter(c)}2:{get_column_letter(c)}{last})'
-                                       for c in range(2, total_column + 1)]])
-            for cells in summary.iter_rows(min_row=2, min_col=2, max_col=total_column):
-                for cell in cells:
-                    cell.number_format = '#,##0.00'
-            style_sheet(summary)
-            for cell in summary[summary.max_row]:
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill('solid', fgColor='DDEBF7')
+            write_summary(summary, categories, daily)
             dates = [r['date'] for r in records]
             start, end = min(dates), max(dates)
             # 使用实际配送日期范围，包含年份，跨月或跨年不产生歧义。
             safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', school).rstrip(' .')[:70] or '未命名学校'
             filename = f'{index:02d}_{safe_name}_{start:%Y.%m.%d}-{end:%Y.%m.%d}对账明细.xlsx'
-            out.save(run_dir / filename)
+            school_file = f'学校版/{filename}'
+            out.save(run_dir / school_file)
             out.close()
-            school_reports.append(dict(school=school, rows=len(records), file=filename,
-                                       total=str(sum((r['amount'] for r in records), Decimal(0))),
-                                       pending_rows=sum(r['category'] == '待核对' for r in records)))
+            report = dict(school=school, rows=len(records), file=school_file,
+                          total=str(sum((r['amount'] for r in records), Decimal(0))),
+                          pending_rows=sum(r['category'] == '待核对' for r in records))
+            if include_guotou:
+                guotou_file = f'国投版/国投_{filename}'
+                write_guotou(run_dir / guotou_file, output_headers, records, output_mi, output_di)
+                report['guotou_file'] = guotou_file
+            school_reports.append(report)
             if progress:
                 progress(f'已生成 {index}/{len(groups)}：{school}')
         with (run_dir / '待核对记录.csv').open('w', encoding='utf-8-sig', newline='') as f:

@@ -4,7 +4,7 @@ import re
 import shutil
 from collections import defaultdict
 from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from math import ceil
 from pathlib import Path
 from unicodedata import east_asian_width
@@ -13,10 +13,7 @@ from uuid import uuid4
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
-from .core import delivery_date, safe_text
-
-CENT = Decimal('0.01')
-DISCOUNT = Decimal('0.957')
+from .core import DISCOUNT, delivery_date, product_category, safe_text, settlement
 HEADERS = ['分组', '配送日期', '订单编号', '客户名', '分类对象', '序号', '品类', '商品名称', '单位', '配送量', '基准价', '折扣率', '结算单价', '结算金额', '备注']
 # Excel's column-width dialog excludes the padding stored in the workbook.
 COLUMN_WIDTHS = {'G': 9.625, 'H': 34.625, 'I': 12, 'L': 12, 'M': 9.625, 'N': 9.625}
@@ -61,8 +58,7 @@ def write_sheet(ws, school, day, obj, records):
         ws.cell(4, col, label)
     total = Decimal(0)
     for seq, record in enumerate(records, 1):
-        unit = (record['price'] * DISCOUNT).quantize(CENT, rounding=ROUND_HALF_UP)
-        amount = (unit * record['quantity']).quantize(CENT, rounding=ROUND_HALF_UP)
+        unit, amount = settlement(record['price'], record['quantity'])
         total += amount
         values = [day.isoformat()+school+obj, day.isoformat(), record['order'], school, obj, seq,
                   record['category'], record['name'], record['unit'], float(record['quantity']),
@@ -160,7 +156,7 @@ def export_delivery(source, output_dir, progress=None):
                 continue
             def get(label):
                 return values[indexes[label]] if label in indexes else None
-            category = str(get('品类') or '').split('>')[0].strip()
+            category = product_category(get('品类'))
             if category == '米面油':
                 excluded += 1
                 continue

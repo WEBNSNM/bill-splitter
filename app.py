@@ -51,6 +51,7 @@ def main():
     source = tk.StringVar()
     output = tk.StringVar()
     amount = tk.StringVar(value='销售金额(元)')
+    include_guotou = tk.BooleanVar(value=False)
     result_path = tk.StringVar()
 
     def field(label, variable, choose):
@@ -66,6 +67,7 @@ def main():
     options.pack(fill='x', pady=10)
     ttk.Label(options, text='③ 金额口径', width=10).pack(side='left')
     ttk.Combobox(options, textvariable=amount, values=['销售金额(元)', '下单金额(元)'], state='readonly').pack(side='left')
+    ttk.Checkbutton(options, text='同时生成国投对账单（95.7%）', variable=include_guotou).pack(side='left', padx=16)
     rule_label = ttk.Label(panel)
     rule_label.pack(anchor='w', pady=5)
     detail_label = ttk.Label(panel, style='Subtitle.TLabel')
@@ -86,10 +88,13 @@ def main():
         log.see('end')
         log.configure(state='disabled')
 
-    def worker(src, dest, col, selected_mode):
+    def worker(src, dest, col, selected_mode, guotou):
         try:
             callback = lambda text: events.put(('log', text))
-            result = export_delivery(src, dest, callback) if selected_mode == 'delivery' else export_bills(src, dest, col, callback)
+            if selected_mode == 'delivery':
+                result = export_delivery(src, dest, callback)
+            else:
+                result = export_bills(src, dest, col, callback, include_guotou=guotou)
             events.put(('delivery_done' if selected_mode == 'delivery' else 'done', result))
         except Exception as error:
             events.put(('error', str(error)))
@@ -103,7 +108,8 @@ def main():
         home_button.configure(state='disabled')
         report_button.configure(state='disabled')
         append('正在检查源数据并生成文件……')
-        threading.Thread(target=worker, args=(source.get(), output.get(), amount.get(), mode.get()), daemon=True).start()
+        args = (source.get(), output.get(), amount.get(), mode.get(), include_guotou.get())
+        threading.Thread(target=worker, args=args, daemon=True).start()
 
     def update_worker(download=None):
         try:

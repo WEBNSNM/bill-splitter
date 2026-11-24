@@ -15,7 +15,12 @@ def write_report(result):
     for item in result['exception_details']:
         location = f"{item['source_sheet']} · Excel 第 {item['source_row']} 行"
         rows.append('<tr>' + ''.join(f'<td>{e(v)}</td>' for v in [location, item['school'], item['address'], item.get('object_name', ''), item.get('classification_field', '收货地址'), item['date'], item['amount'], item['reason']]) + '</tr>')
-    schools = ''.join('<tr><td>' + e(s['school']) + '</td><td>' + e(s['rows']) + '</td><td>' + e(s['total']) + '</td><td>' + e(s['pending_rows']) + '</td><td><a href="' + quote(s['file']) + '">打开学校账单</a></td></tr>' for s in result['school_details'])
+    schools = ''.join(
+        '<tr><td>' + e(s['school']) + '</td><td>' + e(s['rows']) + '</td><td>' + e(s['total'])
+        + '</td><td>' + e(s['pending_rows']) + '</td><td><a href="' + quote(s['file']) + '">打开学校账单</a>'
+        + (' · <a href="' + quote(s['guotou_file']) + '">打开国投账单</a>' if 'guotou_file' in s else '')
+        + '</td></tr>' for s in result['school_details']
+    )
     document = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>账单核对报告</title><style>
 body{font:15px/1.65 "Microsoft YaHei",sans-serif;background:#f3f6fa;color:#21324a;margin:0}main{max-width:1400px;margin:auto;padding:32px}h1{margin:0}small{color:#607086}a{color:#175baf}nav{display:flex;gap:20px;margin:20px 0}.cards{display:flex;gap:12px;flex-wrap:wrap}.card{background:white;border:1px solid #dfe6ef;border-radius:12px;padding:18px;flex:1;min-width:150px}.card strong{display:block;font-size:24px}section{background:white;border:1px solid #dfe6ef;border-radius:12px;padding:20px;margin-top:22px}.scroll{overflow:auto;max-height:650px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:12px;text-align:left;border-bottom:1px solid #e5eaf0;vertical-align:top}th{background:#eaf0f8;position:sticky;top:0}td:first-child{min-width:175px;font-weight:600}input{padding:10px;width:min(90%,500px);border:1px solid #bbc9da;border-radius:6px;margin-bottom:12px}.note{padding:12px;background:#fff5df;border-radius:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere}h2{margin-top:0}
