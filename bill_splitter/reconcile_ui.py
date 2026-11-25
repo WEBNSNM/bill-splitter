@@ -20,6 +20,7 @@ def open_reconciliation(root):
     days = tk.StringVar(value='3')
     status = tk.StringVar()
     details = tk.StringVar()
+    feedback = tk.StringVar()
     remember = tk.BooleanVar()
     vendors = {}
     review = None
@@ -37,7 +38,10 @@ def open_reconciliation(root):
         filedialog.askopenfilename(parent=window, filetypes=files) or sales_path.get()))
     field('保存到', output, lambda: output.set(filedialog.askdirectory(parent=window) or output.get()))
 
-    supplier_bar = ttk.Frame(body)
+    supplier_section = ttk.LabelFrame(body, text='供应商表', padding=(8, 4))
+    supplier_section.pack(fill='x', pady=5)
+    ttk.Label(supplier_section, text='可一次选择多份 Excel。选中已添加的文件，可修改用于导出和保存别名的供应商名称。').pack(anchor='w')
+    supplier_bar = ttk.Frame(supplier_section)
     supplier_bar.pack(fill='x', pady=5)
     vendor_list = tk.Listbox(supplier_bar, height=3, exportselection=False)
     vendor_list.pack(side='left', fill='x', expand=True)
@@ -46,6 +50,8 @@ def open_reconciliation(root):
         vendor_list.delete(0, 'end')
         for path, name in vendors.items():
             vendor_list.insert('end', f'{name}  |  {Path(path).name}')
+        if not vendors:
+            vendor_list.insert('end', '尚未添加供应商表')
 
     def add_vendors():
         for path in filedialog.askopenfilenames(parent=window, filetypes=files):
@@ -53,7 +59,7 @@ def open_reconciliation(root):
         refresh_vendors()
 
     def change_vendor(remove=False):
-        if not vendor_list.curselection():
+        if not vendors or not vendor_list.curselection():
             return
         path = list(vendors)[vendor_list.curselection()[0]]
         if remove:
@@ -64,9 +70,10 @@ def open_reconciliation(root):
                 vendors[path] = name.strip()
         refresh_vendors()
 
-    ttk.Button(supplier_bar, text='添加供应商表', command=add_vendors).pack(side='left')
-    ttk.Button(supplier_bar, text='修改名称', command=change_vendor).pack(side='left')
+    ttk.Button(supplier_bar, text='选择供应商 Excel', command=add_vendors).pack(side='left')
+    ttk.Button(supplier_bar, text='修改供应商名称', command=change_vendor).pack(side='left')
     ttk.Button(supplier_bar, text='移除', command=lambda: change_vendor(True)).pack(side='left')
+    refresh_vendors()
     actions = ttk.Frame(body)
     actions.pack(fill='x', pady=5)
     ttk.Label(actions, text='采购后最多天数').pack(side='left')
@@ -88,13 +95,17 @@ def open_reconciliation(root):
         tree.pack(fill='both', expand=True)
         return tree
 
+    ttk.Label(body, text='1. 选择一条采购记录').pack(anchor='w')
     purchases = table(('供应商', '采购行', '单据日期', '单据备注', '采购商品', '数量 / 单位', '规格', '结果'),
                       (100, 65, 95, 155, 230, 85, 90, 125), 6)
     ttk.Label(body, textvariable=details, wraplength=810).pack(anchor='w')
+    ttk.Label(body, text='2. 选择对应的销售候选，再点「确认匹配」').pack(anchor='w')
     candidates = table(('销售行', '配送日期', '客户名', '销售商品', '数量 / 单位', '规格', '匹配依据'),
                        (65, 95, 220, 220, 85, 90, 360), 5)
     review_actions = ttk.Frame(body)
     review_actions.pack(fill='x')
+    ttk.Label(body, text='勾选后，确认的学校简称和商品异名会保存在本机，供同一供应商下次匹配使用。').pack(anchor='w')
+    ttk.Label(body, textvariable=feedback, wraplength=810).pack(anchor='w')
 
     def current_key():
         selection = purchases.selection()
@@ -107,6 +118,8 @@ def open_reconciliation(root):
         purchases.set(f'{key[0]}:{key[1]}', '结果', reason)
 
     def show_candidates(_event=None):
+        if _event is not None:
+            feedback.set('')
         candidates.delete(*candidates.get_children())
         key = current_key()
         if review is None or key is None:
@@ -122,12 +135,19 @@ def open_reconciliation(root):
             reason = item.reason
             if sale.row in review.matches.values() and review.matches.get(key) != sale.row:
                 reason += '、已有归属'
+            elif review.matches.get(key) == sale.row:
+                reason += '、已匹配本条采购'
             candidates.insert('', 'end', iid=str(sale.row),
                               values=(sale.row, sale.day, sale.school, sale.name,
                                       f'{sale.quantity} {sale.unit}', sale.spec, reason))
+        matched = review.matches.get(key)
+        if matched is not None and candidates.exists(str(matched)):
+            candidates.selection_set(str(matched))
+            candidates.see(str(matched))
 
     def analyze():
         nonlocal review
+        feedback.set('')
         try:
             if not sales_path.get() or not vendors:
                 raise ValueError('请选择销售明细和至少一份供应商表。')
@@ -157,16 +177,35 @@ def open_reconciliation(root):
     def confirm(clear=False):
         key = current_key()
         selected = candidates.selection()
-        if review is None or key is None or not (clear or selected):
+        if review is None:
+            feedback.set('请先选择销售明细和供应商表，再点「开始匹配」。')
             return
+        if key is None:
+            feedback.set('请先在上表选中一条采购记录。')
+            return
+        if not clear and not selected:
+            feedback.set('请在下表选中一条销售候选。' if review.candidates[key]
+                         else '这条采购没有销售候选，可留空并继续核对下一条。')
+            return
+        sale_row = None if clear else int(selected[0])
         try:
-            review.confirm(key, None if clear else int(selected[0]), remember=remember.get())
-            if remember.get() and not clear:
-                save_aliases(alias_path, review.aliases)
-        except (ValueError, OSError) as error:
-            messagebox.showerror('无法确认', str(error), parent=window)
+            review.confirm(key, sale_row, remember=remember.get())
+        except ValueError as error:
+            feedback.set(str(error))
+            return
         update_purchase(key)
         show_candidates()
+        if clear:
+            feedback.set(f'采购第 {key[1]} 行已留空。')
+            return
+        message = f'已确认采购第 {key[1]} 行对应销售第 {sale_row} 行。'
+        try:
+            if remember.get() and not clear:
+                save_aliases(alias_path, review.aliases)
+                message += '已记住学校和商品别名。'
+        except OSError as error:
+            message += f'别名无法保存：{error}'
+        feedback.set(message)
 
     def export():
         if review is None or not output.get():
@@ -183,6 +222,6 @@ def open_reconciliation(root):
     ttk.Button(actions, text='开始匹配', command=analyze).pack(side='left', padx=6)
     ttk.Button(actions, text='导出核对副本', command=export).pack(side='right')
     ttk.Checkbutton(review_actions, text='记住此次学校和商品别名', variable=remember).pack(side='left')
-    ttk.Button(review_actions, text='确认所选销售行', command=confirm).pack(side='right')
+    ttk.Button(review_actions, text='确认匹配', command=confirm, style='Primary.TButton').pack(side='right')
     ttk.Button(review_actions, text='取消匹配并留空', command=lambda: confirm(True)).pack(side='right')
     purchases.bind('<<TreeviewSelect>>', show_candidates)
