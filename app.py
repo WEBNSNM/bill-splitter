@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from bill_splitter.core import export_bills
 from bill_splitter.delivery import export_delivery
+from bill_splitter.invoice_ui import open_invoices
 from bill_splitter.reconcile_ui import open_reconciliation
 from bill_splitter.version import APP_NAME, VERSION
 from bill_splitter.updater import check_update, download_update, install_update
@@ -243,6 +244,8 @@ def main():
     ttk.Button(home, text='配送单生成 · 按日期与对象制作配送单', style='Primary.TButton', command=lambda: choose_mode('delivery')).pack(fill='x', pady=12, ipady=12)
     ttk.Button(home, text='供销核对', style='Primary.TButton',
                command=lambda: open_reconciliation(root)).pack(fill='x', pady=12, ipady=12)
+    ttk.Button(home, text='发票批量重命名', style='Primary.TButton',
+               command=lambda: open_invoices(root)).pack(fill='x', pady=12, ipady=12)
     ttk.Label(home, text='所有账单均在本机处理，源文件保持原样。', style='Subtitle.TLabel').pack(anchor='w', pady=24)
     panel.pack_forget()
     append(f'欢迎使用 {APP_NAME}。选好账单和保存位置，就可以开始整理啦。')
