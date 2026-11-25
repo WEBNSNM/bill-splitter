@@ -120,8 +120,11 @@ def main():
         update_button.configure(state='disabled')
         home_button.configure(state='disabled')
         report_button.configure(state='disabled')
+        export_progress.pack(side='left', padx=8)
+        export_progress.start(12)
         append('正在检查源数据并生成文件……')
         args = (source.get(), output.get(), amount.get(), mode.get(), include_guotou.get())
+        root.update_idletasks()
         threading.Thread(target=worker, args=args, daemon=True).start()
 
     def update_worker(download=None):
@@ -143,6 +146,9 @@ def main():
         try:
             while True:
                 kind, payload = events.get_nowait()
+                if kind in ('done', 'delivery_done', 'error') and export_progress.winfo_manager():
+                    export_progress.stop()
+                    export_progress.pack_forget()
                 if kind not in ('log',):
                     home_button.configure(state='normal')
                 if kind == 'log':
@@ -197,6 +203,7 @@ def main():
 
     button = ttk.Button(actions, text='生成全部学校账单', style='Primary.TButton', command=start)
     button.pack(side='left')
+    export_progress = ttk.Progressbar(actions, mode='indeterminate', length=100)
     report_button = ttk.Button(actions, text='查看核对报告', state='disabled',
                               command=lambda: webbrowser.open((Path(result_path.get()) / '核对报告.html').as_uri()))
     report_button.pack(side='left', padx=10)

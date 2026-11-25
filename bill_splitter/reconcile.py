@@ -22,6 +22,11 @@ SUPPLIER_COLUMNS = ('单据日期', '单据备注', '商品名称', '数量', '�
 SALES_COLUMNS = ('配送日期', ('客户名', '客户名称'), ('商品名', '商品名称'),
                  '销售数量', ('计量单位', '单位'), '销售金额(元)')
 RESULT_COLUMNS = ('销售名称', '销售金额', '毛利', '毛利率')
+PACK_SIZE = re.compile(
+    r'(?<![a-z0-9])\d+(?:\.\d+)?\s*'
+    r'(?:kg|mg|ml|g|l|千克|公斤|克|毫升|升|斤|包|袋|瓶|盒|件|桶|罐|片|个)(?![a-z])'
+    r'(?:\s*[×x*]\s*\d+\s*(?:包|袋|瓶|盒|件|桶|罐|片|个)?)?'
+)
 
 
 def normalize(value):
@@ -46,12 +51,18 @@ def school_keys(value):
     return {key for key in keys if len(key) >= 2}
 
 
-def similarity(left, right):
-    if not left or not right:
-        return 0
-    match = SequenceMatcher(None, left, right, autojunk=False)
-    common = match.find_longest_match().size
-    return max(match.ratio(), common / min(len(left), len(right)) if common >= 3 else 0)
+def product_keywords(left, right):
+    words = []
+    for i, _, size in SequenceMatcher(None, left, right, autojunk=False).get_matching_blocks():
+        word = left[i:i + size]
+        if size >= 2 or word in ('面', '麦'):
+            words.append(word)
+    return words
+
+
+def keyword_name(value):
+    name = unicodedata.normalize('NFKC', str(value or '')).casefold()
+    return product(PACK_SIZE.sub('', name))
 
 
 @dataclass(frozen=True)
@@ -155,6 +166,7 @@ class Reconciliation:
         by_day = defaultdict(list)
         for sale in sales.lines:
             by_day[sale.day].append(sale)
+        sale_names = {sale.row: (product(sale.name), keyword_name(sale.name)) for sale in sales.lines}
         schools = {sale.school: school_keys(sale.school) for sale in sales.lines if sale.school}
         proposed = {}
         owners = Counter()
@@ -166,32 +178,36 @@ class Reconciliation:
             hits = {name for name, keys in schools.items() if note and any(k in note for k in keys)}
             if known_school in schools:
                 hits = {known_school}
+            school = len(hits) == 1
             identity = product(purchase.name)
+            keywords = keyword_name(purchase.name)
             known_product = aliases.get('products', {}).get(identity)
             candidates = []
             for delta in range(days + 1):
                 for sale in by_day[purchase.day + timedelta(days=delta)]:
-                    if hits and sale.school not in hits:
+                    if school and sale.school not in hits:
                         continue
-                    sale_product = product(sale.name)
+                    sale_product, sale_keywords = sale_names[sale.row]
                     exact = bool(identity and (identity == sale_product or known_product == sale_product))
-                    score = similarity(identity, sale_product)
-                    if not exact and score < 0.55:
+                    words = product_keywords(keywords, sale_keywords) if not exact else []
+                    if not exact and not words:
                         continue
+                    score = sum(len(word) ** 2 for word in words)
                     unit = bool(purchase.unit and normalize(purchase.unit) == normalize(sale.unit))
                     quantity = purchase.quantity == sale.quantity
                     spec = not purchase.spec or not sale.spec or normalize(purchase.spec) == normalize(sale.spec)
-                    school = len(hits) == 1
                     reason = '、'.join(('校区明确' if school else '校区待核对',
-                                      '商品名或别名吻合' if exact else '商品名相似',
+                                      '商品名或别名吻合' if exact else '商品关键词：' + '／'.join(words),
                                       f'晚 {delta} 天' if delta else '同日',
                                       '数量单位一致' if unit and quantity else '数量或单位有差异',
                                       '规格一致或缺省' if spec else '规格有差异'))
                     candidates.append(Candidate(sale, reason,
                                                 (exact, unit and quantity, delta == 1, spec, score, -delta),
                                                 school and exact and unit and quantity and spec))
-            candidates.sort(key=lambda item: item.rank, reverse=True)
-            self.candidates[key] = candidates
+            candidates.sort(key=lambda item: (item.rank[0], item.rank[4], item.rank[1],
+                                               item.rank[2], item.rank[3], item.rank[5]), reverse=True)
+            same_name = [item for item in candidates if item.rank[0]]
+            self.candidates[key] = same_name or candidates
             # Consider competing ownership across every supplier before filling any row.
             owners.update(item.sale.row for item in candidates
                           if item.rank[0] or (item.rank[1] and item.sale.school in hits))
