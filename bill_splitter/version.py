@@ -1,3 +1,3 @@
 APP_NAME = '案甚科技'
-VERSION = '0.3.18'
+VERSION = '0.3.19'
 GITHUB_REPOSITORY = 'WEBNSNM/bill-splitter'

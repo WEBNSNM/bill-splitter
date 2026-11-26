@@ -80,7 +80,7 @@ def write_sheet(ws, school, day, obj, records):
     ws.merge_cells(start_row=signature_row, start_column=11, end_row=signature_row, end_column=15)
     ws.cell(signature_row, 6, '送货人：')
     ws.cell(signature_row, 11, '收货人：')
-    edge = Side(style='thin', color='595959')
+    edge = Side(style='thin', color='FF000000')
     border = Border(left=edge, right=edge, top=edge, bottom=edge)
     centered = Alignment(horizontal='center', vertical='center', wrap_text=True)
     header = Alignment(horizontal='left', vertical='center', wrap_text=True)
@@ -104,7 +104,6 @@ def write_sheet(ws, school, day, obj, records):
     ws.row_dimensions[2].height = 22
     ws.row_dimensions[3].height = 22
     ws.row_dimensions[4].height = 30
-    ws.row_dimensions[signature_row].height = 100
     for row in range(5, end):
         lines = max(wrapped_lines(ws[f'{col}{row}'].value, capacity)
                     for col, capacity in (('G', 10), ('H', 30), ('I', 10), ('O', 6)))
@@ -115,6 +114,7 @@ def write_sheet(ws, school, day, obj, records):
         if col <= 5:
             ws.column_dimensions[letter].hidden = True
     ws.sheet_view.showGridLines = False
+    ws.print_options.gridLines = False
     ws.freeze_panes = 'J5'
     ws.print_area = f'F1:O{signature_row}'
     ws.page_margins.top = ws.page_margins.bottom = 1 / 2.54
