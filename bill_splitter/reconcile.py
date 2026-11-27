@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from hashlib import file_digest
+from itertools import islice
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,7 +19,16 @@ from openpyxl.styles import PatternFill
 from .core import delivery_date, money, safe_text
 from .delivery import number
 
-SUPPLIER_COLUMNS = ('单据日期', '单据备注', '商品名称', '数量', '单位', '金额')
+SUPPLIER_COLUMNS = (
+    ('单据日期', '采购日期', '送货日期', '日期'),
+    ('单据备注', '学校', '学校名称', '校区', '客户名', '客户名称', '客户', '备注'),
+    ('商品名称', '商品名', '品名', '货品名称', '存货'),
+    ('数量', '采购数量', '送货数量'),
+    ('单位', '计量单位', '采购单位'),
+    ('金额', '采购金额', '金额(元)', '金额（元）', '采购金额(元)', '采购金额（元）'),
+)
+UNIT_COLUMN = 4
+SUPPLIER_HEADER_LIMIT = 30
 SALES_COLUMNS = ('配送日期', ('客户名', '客户名称'), ('商品名', '商品名称'),
                  '销售数量', ('计量单位', '单位'), '销售金额(元)')
 RESULT_COLUMNS = ('销售名称', '销售金额', '毛利', '毛利率')
@@ -84,11 +94,63 @@ class Source:
     columns: tuple
     lines: list
     digest: str
+    header_row: int = 1
 
     @property
     def date_range(self):
         days = [line.day for line in self.lines]
         return f'{min(days)} 至 {max(days)}' if days else '无明细'
+
+
+class SupplierColumnsError(ValueError):
+    def __init__(self, path, message):
+        self.path = path
+        super().__init__(f'{path.name}：{message}')
+
+
+@dataclass(frozen=True)
+class SupplierMapping:
+    sheet: str
+    headers: tuple
+    columns: tuple
+    header_row: int = 1
+
+    def validate(self, path, headers):
+        if headers != self.headers:
+            raise SupplierColumnsError(path, '表头已变更，请重新设置供应商列对应。')
+        selected = []
+        for i, (names, column) in enumerate(zip(SUPPLIER_COLUMNS, self.columns, strict=True)):
+            if i == UNIT_COLUMN and column is None:
+                continue
+            if column is None or not 0 <= column < len(headers) or not headers[column]:
+                raise SupplierColumnsError(path, f'请选择「{names[0]}」对应的列。')
+            selected.append(column)
+        if len(set(selected)) != len(selected):
+            raise SupplierColumnsError(path, '有重复选用的 Excel 列，请为每个字段选择不同的列。')
+
+
+def row_headers(row):
+    return tuple(str(value or '').strip() for value in row)
+
+
+def supplier_headers(path):
+    with Path(path).open('rb') as stream:
+        book = load_workbook(stream, read_only=True, data_only=True)
+        try:
+            return {ws.title: {i: row_headers(row) for i, row in enumerate(
+                        islice(ws.values, SUPPLIER_HEADER_LIMIT), 1)
+                        if sum(isinstance(value, str) and bool(value.strip()) for value in row) >= 5}
+                    for ws in book.worksheets}
+        finally:
+            book.close()
+
+
+def supplier_choices(headers):
+    choices = []
+    for names in SUPPLIER_COLUMNS:
+        exact = tuple(i for i, header in enumerate(headers) if header == names[0])
+        choices.append(exact or tuple(i for i, header in enumerate(headers) if header in names[1:]))
+    return tuple(choices)
 
 
 def source_columns(headers, required):
@@ -102,39 +164,68 @@ def source_columns(headers, required):
     return tuple(columns)
 
 
-def read_source(path, *, sales=False, sheet=None):
+def read_source(path, *, sales=False, sheet=None, mapping=None):
     path = Path(path).resolve()
-    required = SALES_COLUMNS if sales else SUPPLIER_COLUMNS
     with path.open('rb') as stream:
         digest = file_digest(stream, 'sha256').hexdigest()
         stream.seek(0)
         book = load_workbook(stream, read_only=True, data_only=True)
         try:
+            if mapping is not None:
+                sheet = mapping.sheet
+                if sheet not in book.sheetnames:
+                    raise SupplierColumnsError(path, '已选工作表不存在，请重新设置供应商列对应。')
             for ws in ([book[sheet]] if sheet else book.worksheets):
                 rows = ws.values
-                headers = [str(v or '').strip() for v in next(rows, ())]
-                columns = source_columns(headers, required)
+                if sales:
+                    header_row = 1
+                    headers = row_headers(next(rows, ()))
+                    columns = source_columns(headers, SALES_COLUMNS)
+                elif mapping is not None:
+                    header_row = mapping.header_row
+                    headers = row_headers(next(islice(rows, header_row - 1, None), ()))
+                    mapping.validate(path, headers)
+                    columns = mapping.columns
+                else:
+                    columns = None
+                    for header_row, row in enumerate(islice(rows, SUPPLIER_HEADER_LIMIT), 1):
+                        headers = row_headers(row)
+                        choices = supplier_choices(headers)
+                        if all(len(options) == 1 or (i == UNIT_COLUMN and not options)
+                               for i, options in enumerate(choices)):
+                            columns = tuple(options[0] if options else None for options in choices)
+                            break
                 if columns is None:
                     continue
                 spec = headers.index('规格') if '规格' in headers else None
                 lines = []
-                for index, row in enumerate(rows, 2):
-                    day, school, name, quantity, unit, amount = (row[col] for col in columns)
+                for index, row in enumerate(rows, header_row + 1):
+                    day, school, name, quantity, unit, amount = (
+                        row[col] if col is not None else None for col in columns)
                     if not day and (not name or str(name).strip() in ('合计', '总计', '总合计')):
                         continue
+                    if not sales:
+                        label = str(day or '').strip().rstrip(':：').strip()
+                        if label in ('合计', '总计', '总合计', '小计'):
+                            continue
+                        if label == '制表人' and all(value is None for value in (school, name, quantity, amount)):
+                            continue
                     try:
                         lines.append(Line(index, delivery_date(day, index, book.epoch),
                                           str(school or '').strip(), str(name or '').strip(),
                                           number(quantity, index, '数量'), str(unit or '').strip(),
-                                          money(amount, index), str(row[spec] or '').strip() if spec is not None else ''))
+                                          None if not sales and amount in (None, '') else money(amount, index),
+                                          str(row[spec] or '').strip() if spec is not None else ''))
                         if not lines[-1].name:
                             raise ValueError(f'第 {index} 行商品名为空。')
                     except ValueError as error:
                         raise ValueError(f'{path.name} / {ws.title}：{error}') from error
-                return Source(path, ws.title, columns, lines, digest)
+                return Source(path, ws.title, columns, lines, digest, header_row)
         finally:
             book.close()
-    labels = '、'.join(field[0] if isinstance(field, tuple) else field for field in required)
+    if not sales:
+        raise SupplierColumnsError(path, '无法唯一识别供应商表头，请设置「供应商列对应」。')
+    labels = '、'.join(field[0] if isinstance(field, tuple) else field for field in SALES_COLUMNS)
     raise ValueError(f'{path.name} 找不到首行含唯一必需表头的工作表。需要：{labels}')
 
 
@@ -163,62 +254,89 @@ class Reconciliation:
         self.matches = {}
         self.candidates = {}
         self.reasons = {}
-        by_day = defaultdict(list)
+        self._by_day = defaultdict(list)
         for sale in sales.lines:
-            by_day[sale.day].append(sale)
-        sale_names = {sale.row: (product(sale.name), keyword_name(sale.name)) for sale in sales.lines}
-        schools = {sale.school: school_keys(sale.school) for sale in sales.lines if sale.school}
+            self._by_day[sale.day].append(sale)
+        self._sale_names = {sale.row: (product(sale.name), keyword_name(sale.name)) for sale in sales.lines}
+        self._schools = {sale.school: school_keys(sale.school) for sale in sales.lines if sale.school}
         proposed = {}
         owners = Counter()
-        for key, purchase in self.lines.items():
-            vendor = suppliers[key[0]][0]
-            aliases = self.aliases.get(vendor, {})
-            note = school_note(purchase.school)
-            known_school = aliases.get('schools', {}).get(note)
-            hits = {name for name, keys in schools.items() if note and any(k in note for k in keys)}
-            if known_school in schools:
-                hits = {known_school}
-            school = len(hits) == 1
-            identity = product(purchase.name)
-            keywords = keyword_name(purchase.name)
-            known_product = aliases.get('products', {}).get(identity)
-            candidates = []
-            for delta in range(days + 1):
-                for sale in by_day[purchase.day + timedelta(days=delta)]:
-                    if school and sale.school not in hits:
-                        continue
-                    sale_product, sale_keywords = sale_names[sale.row]
-                    exact = bool(identity and (identity == sale_product or known_product == sale_product))
-                    words = product_keywords(keywords, sale_keywords) if not exact else []
-                    if not exact and not words:
-                        continue
-                    score = sum(len(word) ** 2 for word in words)
-                    unit = bool(purchase.unit and normalize(purchase.unit) == normalize(sale.unit))
-                    quantity = purchase.quantity == sale.quantity
-                    spec = not purchase.spec or not sale.spec or normalize(purchase.spec) == normalize(sale.spec)
-                    reason = '、'.join(('校区明确' if school else '校区待核对',
-                                      '商品名或别名吻合' if exact else '商品关键词：' + '／'.join(words),
-                                      f'晚 {delta} 天' if delta else '同日',
-                                      '数量单位一致' if unit and quantity else '数量或单位有差异',
-                                      '规格一致或缺省' if spec else '规格有差异'))
-                    candidates.append(Candidate(sale, reason,
-                                                (exact, unit and quantity, delta == 1, spec, score, -delta),
-                                                school and exact and unit and quantity and spec))
-            candidates.sort(key=lambda item: (item.rank[0], item.rank[4], item.rank[1],
-                                               item.rank[2], item.rank[3], item.rank[5]), reverse=True)
-            same_name = [item for item in candidates if item.rank[0]]
-            self.candidates[key] = same_name or candidates
+        for key in self.lines:
+            candidates, hits = self._find_candidates(key)
+            self._set_candidates(key, candidates)
             # Consider competing ownership across every supplier before filling any row.
             owners.update(item.sale.row for item in candidates
                           if item.rank[0] or (item.rank[1] and item.sale.school in hits))
             exact = [item for item in candidates if item.exact]
             if len(exact) == 1:
                 proposed[key] = exact[0].sale.row
-            self.reasons[key] = '待确认' if candidates else '无候选'
         for key, sale_row in proposed.items():
             if owners[sale_row] == 1:
                 self.matches[key] = sale_row
                 self.reasons[key] = '自动匹配'
+
+    def _find_candidates(self, key):
+        purchase = self.lines[key]
+        vendor = self.suppliers[key[0]][0]
+        aliases = self.aliases.get(vendor, {})
+        note = school_note(purchase.school)
+        known_school = aliases.get('schools', {}).get(note)
+        hits = {name for name, keys in self._schools.items() if note and any(k in note for k in keys)}
+        if known_school in self._schools:
+            hits = {known_school}
+        school = len(hits) == 1
+        identity = product(purchase.name)
+        keywords = keyword_name(purchase.name)
+        known_product = aliases.get('products', {}).get(identity)
+        candidates = []
+        for delta in range(self.days + 1):
+            for sale in self._by_day[purchase.day + timedelta(days=delta)]:
+                if school and sale.school not in hits:
+                    continue
+                sale_product, sale_keywords = self._sale_names[sale.row]
+                exact = bool(identity and (identity == sale_product or known_product == sale_product))
+                words = product_keywords(keywords, sale_keywords) if not exact else []
+                if not exact and not words:
+                    continue
+                score = sum(len(word) ** 2 for word in words)
+                unit = not purchase.unit or normalize(purchase.unit) == normalize(sale.unit)
+                quantity = purchase.quantity == sale.quantity
+                spec = not purchase.spec or not sale.spec or normalize(purchase.spec) == normalize(sale.spec)
+                if not purchase.unit:
+                    quantity_reason = ('数量一致' if quantity else '数量有差异') + '、采购单位未提供'
+                else:
+                    quantity_reason = '数量单位一致' if unit and quantity else '数量或单位有差异'
+                reason = '、'.join(('校区明确' if school else '校区待核对',
+                                  '商品名或别名吻合' if exact else '商品关键词：' + '／'.join(words),
+                                  f'晚 {delta} 天' if delta else '同日',
+                                  quantity_reason,
+                                  '规格一致或缺省' if spec else '规格有差异'))
+                candidates.append(Candidate(sale, reason,
+                                            (exact, unit and quantity, delta == 1, spec, score, -delta),
+                                            school and exact and unit and quantity and spec))
+        candidates.sort(key=lambda item: (item.rank[0], item.rank[4], item.rank[1],
+                                           item.rank[2], item.rank[3], item.rank[5]), reverse=True)
+        return candidates, hits
+
+    def _set_candidates(self, key, candidates):
+        same_name = [item for item in candidates if item.rank[0]]
+        self.candidates[key] = same_name or candidates
+        if key not in self.matches and self.reasons.get(key) != '留空':
+            self.reasons[key] = '待确认' if candidates else '无候选'
+
+    def refresh_candidates(self, key):
+        candidates, _ = self._find_candidates(key)
+        self._set_candidates(key, candidates)
+
+    def remember_aliases(self, key, *, school='', name=''):
+        purchase = self.lines[key]
+        vendor = self.suppliers[key[0]][0]
+        note = school_note(purchase.school)
+        identity = product(purchase.name)
+        if note and school:
+            self.aliases.setdefault(vendor, {}).setdefault('schools', {})[note] = school
+        if identity and product(name):
+            self.aliases.setdefault(vendor, {}).setdefault('products', {})[identity] = product(name)
 
     def confirm(self, key, sale_row, *, remember=False):
         purchase = self.lines[key]
@@ -232,13 +350,7 @@ class Reconciliation:
         if sale_row in (row for other, row in self.matches.items() if other != key):
             raise ValueError('这条销售记录已归属其他采购行。请先取消原匹配。')
         if remember:
-            vendor = self.suppliers[key[0]][0]
-            aliases = self.aliases.setdefault(vendor, {})
-            note = school_note(purchase.school)
-            if note and sale.school:
-                aliases.setdefault('schools', {})[note] = sale.school
-            if product(purchase.name) and product(sale.name):
-                aliases.setdefault('products', {})[product(purchase.name)] = product(sale.name)
+            self.remember_aliases(key, school=sale.school, name=sale.name)
         self.matches[key] = sale_row
         self.reasons[key] = '人工确认'
 
@@ -267,18 +379,19 @@ def export_reconciliation(review, output):
                 ws = book[source.sheet]
                 start = ws.max_column + 1
                 for column, label in enumerate(RESULT_COLUMNS, start):
-                    ws.cell(1, column, label)
+                    ws.cell(source.header_row, column, label)
                 for line in source.lines:
                     row = review.matches.get((index, line.row))
                     if row is None:
                         continue
                     sale = review.sale_rows[row]
-                    profit = sale.amount - line.amount
                     safe_text(ws.cell(line.row, start), sale.name)
                     ws.cell(line.row, start + 1, float(sale.amount)).number_format = '#,##0.00'
-                    ws.cell(line.row, start + 2, float(profit)).number_format = '#,##0.00'
-                    if sale.amount:
-                        ws.cell(line.row, start + 3, float(profit / sale.amount)).number_format = '0.00%'
+                    if line.amount is not None:
+                        profit = sale.amount - line.amount
+                        ws.cell(line.row, start + 2, float(profit)).number_format = '#,##0.00'
+                        if sale.amount:
+                            ws.cell(line.row, start + 3, float(profit / sale.amount)).number_format = '0.00%'
                     sale_owners[row] = name
                 book.save(directory / f'{index + 1:02d}_{source.path.stem}_核对.xlsx')
             finally:
